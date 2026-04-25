@@ -99,7 +99,7 @@ export function usePlacesSelection({
   const [diningMenuOptions, setDiningMenuOptions] = useState<string[]>([]);
   const [activeDiningMenu, setActiveDiningMenu] = useState<string | null>(null);
   const [activeDiningMealPeriod, setActiveDiningMealPeriod] =
-    useState<DiningMealPeriod>("lunch");
+    useState<DiningMealPeriod>(() => getDiningMealPeriodForLocation(null));
   const [activeDiningDate, setActiveDiningDate] = useState<string>(getLocalDateString());
   const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
   const [selectedPlaceDetail, setSelectedPlaceDetail] = useState<any | null>(null);
@@ -129,7 +129,7 @@ export function usePlacesSelection({
   const resetDiningState = useCallback(() => {
     setDiningMenuOptions([]);
     setActiveDiningMenu(null);
-    setActiveDiningMealPeriod("lunch");
+    setActiveDiningMealPeriod(getDiningMealPeriodForLocation(null) as DiningMealPeriod);
     setActiveDiningDate(getLocalDateString());
     setDiningMenuPreview(null);
   }, []);

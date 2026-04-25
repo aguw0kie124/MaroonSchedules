@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useUser } from '@clerk/clerk-expo';
-import { ChevronDown, ChevronLeft, ChevronUp } from 'lucide-react-native';
+import { ChevronDown, ChevronLeft, ChevronUp, Bell } from 'lucide-react-native';
 
 import { Card, SectionLabel, Badge } from './DiningUI';
 import { useTheme } from '../SharedUI';
@@ -66,7 +66,9 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
 
-  const { location, mealPeriod, title, locations, sourceHint } = route.params || {};
+  const { location, mealPeriod, title, locations, sourceHint, date } = route.params || {};
+  const activeDate = date || getLocalDateString();
+  const isFuture = activeDate > getLocalDateString();
   const availableMealPeriods = useMemo(() => getDiningMealOptionsForLocation(location), [location]);
   
   const [activeMealPeriod, setActiveMealPeriod] = useState<DiningMealPeriod>(
@@ -109,6 +111,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
       const result = await fetchDiningFullMenuCached({
         location,
         mealPeriod: nextMealPeriod,
+        date: activeDate,
       });
       if (result.success) {
         setMenusByPeriod((current) => ({
@@ -123,7 +126,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
     } finally {
       setLoading(false);
     }
-  }, [location, menusByPeriod]);
+  }, [location, menusByPeriod, activeDate]);
 
   useEffect(() => {
     load(activeMealPeriod);
@@ -147,7 +150,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const refreshTrackerCounts = useCallback(async () => {
     if (!user) return;
     try {
-      const tracker = await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}?date=${encodeURIComponent(getLocalDateString())}`);
+      const tracker = await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}?date=${encodeURIComponent(activeDate)}`);
       const entries = Array.isArray(tracker?.entries) ? tracker.entries : [];
       const nextCounts = entries.reduce((acc: Record<string, { count: number; entryIds: number[] }>, entry: any) => {
         if (entry.meal_period !== activeMealPeriod) return acc;
@@ -162,13 +165,48 @@ export default function FullMenuScreen({ navigation, route }: any) {
     } catch (trackerError) {
       console.warn('Failed to refresh tracker counts', trackerError);
     }
-  }, [activeMealPeriod, user]);
+  }, [activeMealPeriod, user, activeDate]);
 
   useEffect(() => {
     refreshTrackerCounts();
   }, [refreshTrackerCounts]);
 
+  const handleNotifyMe = async (item: any) => {
+    const Notifications = await import('expo-notifications');
+    try {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Please enable notifications in settings.');
+        return;
+      }
+      
+      const trigger = new Date(activeDate + 'T10:30:00');
+      // If the target time has passed but the date hasn't (unlikely since we check date > today, but just in case), add 1 min
+      if (trigger.getTime() < Date.now()) {
+        trigger.setTime(Date.now() + 60000);
+      }
+      
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `🍽️ Menu Alert: ${location}`,
+          body: `${item.name} is available today for ${activeMealPeriod}!`,
+          sound: true,
+        },
+        trigger,
+      });
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Notification Set!', `You will be notified when ${item.name} is served.`);
+    } catch (e) {
+      console.warn(e);
+      Alert.alert('Error', 'Could not set notification.');
+    }
+  };
+
   const addPortion = useCallback(async (item: any) => {
+    if (isFuture) {
+      await handleNotifyMe(item);
+      return;
+    }
     if (!user || !location) return;
     const itemKey = buildMenuItemKey(item);
     setSyncingItemKey(itemKey);
@@ -176,7 +214,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
       await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}`, {
         method: 'POST',
         body: JSON.stringify({
-          date: getLocalDateString(),
+          date: activeDate,
           meal_period: activeMealPeriod,
           label: item.name,
           foods: [buildFoodPayload(item, location, activeMealPeriod)],
@@ -190,9 +228,10 @@ export default function FullMenuScreen({ navigation, route }: any) {
     } finally {
       setSyncingItemKey(null);
     }
-  }, [activeMealPeriod, location, refreshTrackerCounts, user]);
+  }, [activeMealPeriod, location, refreshTrackerCounts, user, activeDate, isFuture]);
 
   const removePortion = useCallback(async (item: any) => {
+    if (isFuture) return;
     if (!user) return;
     const itemKey = buildMenuItemKey(item);
     const existing = portionCounts[itemKey];
@@ -212,7 +251,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
     } finally {
       setSyncingItemKey(null);
     }
-  }, [portionCounts, refreshTrackerCounts, user]);
+  }, [portionCounts, refreshTrackerCounts, user, isFuture]);
 
   const categoryOptions = useMemo(() => {
     const cats = menu?.categories || [];
@@ -398,6 +437,8 @@ export default function FullMenuScreen({ navigation, route }: any) {
                               >
                                 {isSyncing ? (
                                   <ActivityIndicator color={T.sage} size="small" />
+                                ) : isFuture ? (
+                                  <Bell size={16} color={T.sage} />
                                 ) : (
                                   <Text style={[s.actionSymbol, { color: T.sage }]}>+</Text>
                                 )}
