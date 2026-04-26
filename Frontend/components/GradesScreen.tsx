@@ -309,7 +309,13 @@ export function GradesScreen() {
             setResult(data);
             setScreenState('results');
         } catch (err: any) {
-            setErrorMsg(err?.message ?? 'Unknown error');
+            const raw = err?.message ?? 'Unknown error';
+            const isJsonParseNoise =
+                typeof raw === 'string' &&
+                (raw.includes('Expecting value:') ||
+                    raw.includes('Expected value:') ||
+                    /parse response as JSON/i.test(raw));
+            setErrorMsg(isJsonParseNoise ? 'Sorry, class not found' : raw);
             setScreenState('error');
         }
     };

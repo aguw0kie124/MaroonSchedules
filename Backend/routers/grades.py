@@ -50,7 +50,14 @@ def _anex_fetch(subject: str, course_number: str) -> List[Dict[str, Any]]:
     with urllib.request.urlopen(req, timeout=15) as resp:
         body = resp.read().decode("utf-8")
 
-    payload = json.loads(body)
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        # anex.us may return non-JSON (e.g. HTML) when dept/course is invalid
+        raise HTTPException(
+            status_code=404,
+            detail="Sorry, class not found",
+        ) from None
     if isinstance(payload, dict) and "classes" in payload:
         return payload["classes"]
     if isinstance(payload, list):
@@ -113,8 +120,14 @@ def _load_or_fetch(subject: str, course_number: str) -> List[Dict[str, Any]]:
     filepath = os.path.join(DATA_DIR, filename)
 
     if os.path.exists(filepath):
-        with open(filepath, encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(filepath, encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            try:
+                os.remove(filepath)
+            except OSError:
+                pass
 
     # Not cached — fetch live
     raw_rows = _anex_fetch(subject, course_number)
@@ -147,6 +160,8 @@ def search_grades(
     """
     try:
         rows = _load_or_fetch(subject, course)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
