@@ -1,4 +1,4 @@
-
+import argparse
 import os
 import sys
 import json
@@ -16,11 +16,83 @@ from db_config import get_pool
 from routers.traffic import transit_proxy
 
 BASE_URL = "https://aggiespirit.ts.tamu.edu"
-
-# Semester ends approx May 15
-END_DATE = date(2026, 5, 15)
+DEFAULT_LOOKAHEAD_DAYS = 45
+ENV_END_DATE = "TRANSIT_SCRAPE_END_DATE"
+ENV_DAYS_AHEAD = "TRANSIT_SCRAPE_DAYS_AHEAD"
 
 db_lock = Lock()
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Scrape AggieSpirit stop schedules into transit_stop_schedules."
+    )
+    parser.add_argument(
+        "--start-date",
+        help="Override the scrape start date in YYYY-MM-DD format. Defaults to today.",
+    )
+    parser.add_argument(
+        "--end-date",
+        help="Override the scrape end date in YYYY-MM-DD format.",
+    )
+    parser.add_argument(
+        "--days-ahead",
+        type=int,
+        help=(
+            "Scrape this many days ahead from the start date when --end-date is not set. "
+            f"Defaults to {DEFAULT_LOOKAHEAD_DAYS}."
+        ),
+    )
+    return parser.parse_args()
+
+
+def _parse_iso_date(raw_value, label):
+    try:
+        return datetime.strptime(str(raw_value).strip(), "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError(f"Invalid {label}: {raw_value!r}. Expected YYYY-MM-DD.") from exc
+
+
+def resolve_scrape_window(args):
+    start_date = (
+        _parse_iso_date(args.start_date, "--start-date")
+        if args.start_date
+        else date.today()
+    )
+
+    env_end_date = os.getenv(ENV_END_DATE, "").strip()
+    env_days_ahead = os.getenv(ENV_DAYS_AHEAD, "").strip()
+
+    if args.end_date:
+        end_date = _parse_iso_date(args.end_date, "--end-date")
+        source = "cli:end-date"
+    elif env_end_date:
+        end_date = _parse_iso_date(env_end_date, ENV_END_DATE)
+        source = f"env:{ENV_END_DATE}"
+    else:
+        days_ahead = args.days_ahead
+        source = "cli:days-ahead"
+        if days_ahead is None and env_days_ahead:
+            try:
+                days_ahead = int(env_days_ahead)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid {ENV_DAYS_AHEAD}: {env_days_ahead!r}. Expected an integer."
+                ) from exc
+            source = f"env:{ENV_DAYS_AHEAD}"
+        if days_ahead is None:
+            days_ahead = DEFAULT_LOOKAHEAD_DAYS
+            source = f"default:{DEFAULT_LOOKAHEAD_DAYS}d"
+        if days_ahead < 0:
+            raise ValueError("days-ahead must be greater than or equal to 0.")
+        end_date = start_date + timedelta(days=days_ahead)
+
+    if end_date < start_date:
+        raise ValueError(
+            f"Scrape end date {end_date} cannot be earlier than start date {start_date}."
+        )
+
+    return start_date, end_date, source
 
 def get_session():
     session = requests.Session()
@@ -107,7 +179,7 @@ def process_triplet_day(route_number, route_short_name, stop_code, direction_nam
                     conn.commit()
     return len(rows)
 
-def scrape_all():
+def scrape_all(start_date, end_date):
     routes = transit_proxy.get_routes()
     active_labels = set(transit_proxy.get_active_routes())
     
@@ -133,10 +205,9 @@ def scrape_all():
                     
     print(f"[scraper] Total stop/direction triplets to scrape: {len(triplets)}")
     
-    today = date.today()
-    delta = (END_DATE - today).days
-    dates = [today + timedelta(days=i) for i in range(delta + 1)]
-    print(f"[scraper] Scraping for {len(dates)} days ({today} to {END_DATE})")
+    delta = (end_date - start_date).days
+    dates = [start_date + timedelta(days=i) for i in range(delta + 1)]
+    print(f"[scraper] Scraping for {len(dates)} days ({start_date} to {end_date})")
     
     tasks = []
     for d in dates:
@@ -168,4 +239,14 @@ def scrape_all():
     print(f"[scraper] Finished. Inserted {total_inserted} stop-times.")
 
 if __name__ == "__main__":
-    scrape_all()
+    try:
+        cli_args = parse_args()
+        start_date, end_date, window_source = resolve_scrape_window(cli_args)
+        print(
+            f"[scraper] Resolved scrape window: {start_date} to {end_date} "
+            f"({window_source})"
+        )
+        scrape_all(start_date, end_date)
+    except ValueError as exc:
+        print(f"[scraper] {exc}")
+        raise SystemExit(1)
