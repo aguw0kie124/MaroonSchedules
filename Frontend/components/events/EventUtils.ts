@@ -1,5 +1,5 @@
 import { Linking, Platform } from 'react-native';
-import { Trophy, GraduationCap, Pizza, Users, Heart, HeartPulse, Ticket, Megaphone, CalendarDays } from 'lucide-react-native';
+import { Trophy, GraduationCap, Pizza, Users, Heart, HeartPulse, Ticket, Megaphone, CalendarDays, CircleAlert } from 'lucide-react-native';
 import { API_URL } from '../../config';
 
 export const TAMU_EVENTS_API = `${API_URL}/campus/events?limit=1000`;
@@ -7,6 +7,7 @@ export const TAMU_EVENTS_API = `${API_URL}/campus/events?limit=1000`;
 export type ExploreCategory =
   | 'For U'
   | 'Food'
+  | 'Promotions'
   | 'Sports'
   | 'Social'
   | 'Miscellaneous'
@@ -50,6 +51,15 @@ export interface CampusEventResponse {
   campus_interest_score?: number | null;
   campus_interest_label?: 'low' | 'medium' | 'high' | null;
   campus_interest_reasons?: string[] | null;
+  image_url?: string | null;
+  organization_name?: string | null;
+  event_scope?: string | null;
+  area_label?: string | null;
+  is_off_campus?: boolean;
+  is_promotion?: boolean;
+  city?: string | null;
+  business_name?: string | null;
+  discount_text?: string | null;
 }
 
 export interface TAMUEvent {
@@ -72,6 +82,7 @@ export interface TAMUEvent {
   food_confidence?: number;
   food_type?: string | null;
   categories?: Record<string, number>;
+  imageUrl?: string | null;
   _searchBlob?: string;
   _category?: ExploreCategory;
   _socialMode?: SocialMode;
@@ -79,6 +90,12 @@ export interface TAMUEvent {
   campus_interest_score?: number | null;
   campus_interest_label?: 'low' | 'medium' | 'high' | null;
   campus_interest_reasons?: string[] | null;
+  area_label?: string | null;
+  city?: string | null;
+  business_name?: string | null;
+  is_off_campus?: boolean;
+  is_promotion?: boolean;
+  discount_text?: string | null;
   _forYouScore?: number;
   _forYouMatched?: boolean;
   _forYouReasons?: string[];
@@ -89,6 +106,7 @@ export const ALL_CATEGORIES: ExploreCategory[] = [
   'Sports',
   'Academic',
   'Food',
+  'Promotions',
   'Social',
   'Health & Wellness',
   'Entertainment',
@@ -147,6 +165,13 @@ export const CATEGORY_META: Record<
     cardTint: '#6EBF7E',
     icon: Pizza,
   },
+  Promotions: {
+    accent: '#FFD59E',
+    chipBg: '#FFF0DB',
+    chipText: '#7A4A11',
+    cardTint: '#F2A75B',
+    icon: Megaphone,
+  },
   Social: {
     accent: '#F7B4B8',
     chipBg: '#FFD7DA',
@@ -173,7 +198,7 @@ export const CATEGORY_META: Record<
     chipBg: '#D6F2E4',
     chipText: '#214E40',
     cardTint: '#6EB59A',
-    icon: Megaphone,
+    icon: CircleAlert,
   },
   Miscellaneous: {
     accent: '#D7DCE8',
@@ -204,6 +229,10 @@ export function getSearchBlob(event: TAMUEvent) {
     event.location,
     event.location_title,
     event.group_title,
+    event.area_label,
+    event.city,
+    event.business_name,
+    event.discount_text,
     ...(event.tags || []),
     ...(event.access_tags || []),
     ...(event.event_types || []),
@@ -215,6 +244,7 @@ export function getSearchBlob(event: TAMUEvent) {
 
 export function classifyCategory(event: TAMUEvent): ExploreCategory {
   if (event.categories) {
+    if (event.categories.promotions || event.is_promotion) return 'Promotions';
     if (event.categories.food) return 'Food';
     if (event.categories.sports) return 'Sports';
     if (event.categories.entertainment) return 'Entertainment';
@@ -226,6 +256,7 @@ export function classifyCategory(event: TAMUEvent): ExploreCategory {
   }
 
   const blob = getSearchBlob(event);
+  if (event.is_promotion || /\bpromotion\b|\bspecial\b|\bdiscount\b|\bcoupon\b|\bhappy hour\b|\bstudent night\b/.test(blob)) return 'Promotions';
   if (event.has_food || /\bfood\b|\bmeal\b|\bdinner\b|\blunch\b|\bbreakfast\b|\bpizza\b|\brefreshments\b/.test(blob)) return 'Food';
   if (/\bsport\b|\bgame\b|\bmatch\b|\btournament\b|\bathletic\b|\bworkout\b/.test(blob)) return 'Sports';
   if (/\bconcert\b|\bshow\b|\bmovie\b|\bcomedy\b|\bmusic\b|\bperformance\b|\bfestival\b/.test(blob)) return 'Entertainment';

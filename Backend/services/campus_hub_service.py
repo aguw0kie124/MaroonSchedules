@@ -19,6 +19,7 @@ from services import (
     campus_events_service,
     place_registry_service,
     campus_places_service,
+    local_business_events_service,
     tag_access_service,
     encryption_service,
     parking_realtime_service,
@@ -94,6 +95,17 @@ def _local_cache_set(
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _combine_source_status(*statuses: str | None) -> str:
+    normalized = [str(status or "").strip().lower() for status in statuses if status]
+    if any(status == "live" for status in normalized):
+        return "live"
+    if any(status == "preview" for status in normalized):
+        return "preview"
+    if any(status == "missing" for status in normalized):
+        return "missing"
+    return "preview"
 
 
 def _score_personalized_relevance(event: Dict[str, Any], user: Dict[str, Any]) -> float:
@@ -1160,6 +1172,7 @@ def get_events_snapshot(
     category: Optional[str] = None,
     student_relevant_only: bool = False,
     campus: str = "tamu",
+    include_off_campus: bool = False,
     conn: Optional[psycopg.Connection] = None,
     force_refresh: bool = False,
 ) -> Dict[str, Any]:
@@ -1201,10 +1214,26 @@ def get_events_snapshot(
         }
 
     crawler_events = campus_events_service.load_campus_events(campus=campus, force_refresh=force_refresh)
-    events = crawler_events.get("events") if isinstance(crawler_events, dict) else crawler_events
-    source_status = crawler_events.get("source_status") if isinstance(crawler_events, dict) else "live"
-    events_copy = list(events) if events else []
-    print(f"[EVENTS_DEBUG] crawler events: {len(events_copy)}, source: {source_status}")
+    campus_feed = crawler_events.get("events") if isinstance(crawler_events, dict) else crawler_events
+    campus_source_status = crawler_events.get("source_status") if isinstance(crawler_events, dict) else "live"
+
+    business_feed_payload: Dict[str, Any] = {"events": [], "source_status": "missing"}
+    if include_off_campus and campus == "tamu":
+        business_feed_payload = local_business_events_service.load_local_business_events(force_refresh=force_refresh)
+    business_events = business_feed_payload.get("events") if isinstance(business_feed_payload, dict) else []
+    business_source_status = business_feed_payload.get("source_status") if isinstance(business_feed_payload, dict) else "missing"
+
+    source_status = _combine_source_status(campus_source_status, business_source_status)
+    source_statuses = {
+        "campus": campus_source_status,
+        "off_campus": business_source_status if include_off_campus and campus == "tamu" else "disabled",
+    }
+    events_copy = list(campus_feed) if campus_feed else []
+    off_campus_events = list(business_events) if business_events else []
+    print(
+        f"[EVENTS_DEBUG] crawler events: {len(events_copy)} campus + {len(off_campus_events)} off-campus, "
+        f"source: {source_statuses}"
+    )
     admin_events_list = []
     
     # Fetch Admin Events
@@ -1294,9 +1323,9 @@ def get_events_snapshot(
         user_tags=user_access_tags,
         bypass_restrictions=bypass_tag_restrictions,
     )
-    has_modern_events = bool(events_copy)
+    has_modern_events = bool(events_copy or off_campus_events)
     # Re-integrate admin events AFTER tag filtering to ensure they bypass it entirely
-    events = admin_events_list + events
+    events = admin_events_list + off_campus_events + events
     print(f"[EVENTS_DEBUG] after merge: {len(events)} total events (has_modern_events={has_modern_events})")
     # Filter for upcoming events, while keeping featured/admin events on their own shorter window.
     events = [
@@ -1336,6 +1365,7 @@ def get_events_snapshot(
             "generated_at": _utc_now_iso(),
             "stale_after": 300,
             "source_status": source_status,
+            "source_statuses": source_statuses,
             "events": [
                 {
                     **event,
@@ -1405,6 +1435,7 @@ def get_events_snapshot(
         "generated_at": _utc_now_iso(),
         "stale_after": 300,
         "source_status": "preview",
+        "source_statuses": source_statuses,
         "events": limited,
     }
 
@@ -1679,13 +1710,19 @@ def get_notification_hub(
     clerk_id: str,
     academic_data: Optional[Dict[str, Any]] = None,
     dining_data: Optional[Dict[str, Any]] = None,
-    events_data: Optional[List[Dict[str, Any]]] = None,
+    events_data: Optional[Dict[str, Any]] = None,
     network_data: Optional[Dict[str, Any]] = None,
     conn: Optional[psycopg.Connection] = None,
 ) -> List[Dict[str, Any]]:
     academic = academic_data or get_academic_snapshot(clerk_id, conn=conn)
     dining = dining_data or get_dining_snapshot(clerk_id, conn=conn)
-    events = events_data or get_events_snapshot(clerk_id, limit=3, conn=conn)
+    events_snapshot = events_data or get_events_snapshot(
+        clerk_id,
+        limit=3,
+        include_off_campus=False,
+        conn=conn,
+    )
+    events = events_snapshot.get("events", []) if isinstance(events_snapshot, dict) else (events_snapshot or [])
     network = network_data or discover_network(clerk_id, limit=3, conn=conn)
 
     notifications: List[Dict[str, Any]] = []
@@ -1754,7 +1791,11 @@ def get_overview(clerk_id: str) -> Dict[str, Any]:
             dining = safe_exec("dining", lambda: get_dining_snapshot(clerk_id, conn=conn), {"status": "preview"})
             career = safe_exec("career", lambda: get_career_snapshot(clerk_id, conn=conn), {"status": "preview"})
             network = safe_exec("network", lambda: discover_network(clerk_id, limit=6, conn=conn), {"suggestions": []})
-            events = safe_exec("events", lambda: get_events_snapshot(clerk_id, limit=6, conn=conn), [])
+            events = safe_exec(
+                "events",
+                lambda: get_events_snapshot(clerk_id, limit=6, include_off_campus=False, conn=conn),
+                [],
+            )
             
             # 3. Notification hub (Passed pre-loaded data to avoid redundant DB calls)
             notifications = safe_exec("notifications", lambda: get_notification_hub(

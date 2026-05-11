@@ -1,0 +1,267 @@
+{
+  "sources": {},
+  "http_cache": {
+    "https://visit.cstx.gov/events/daytime-harvest-festival2/": {
+      "etag": "\"378c4-65192d6950539-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:27 GMT"
+    },
+    "https://visit.cstx.gov/events/reveille-rooftop-bar-live-music-reagan-quinn/": {
+      "etag": "\"379c9-65192d48b1b7d-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:53 GMT"
+    },
+    "https://visit.cstx.gov/directory/the-spot-on-northgate/": {
+      "etag": "\"3a03f-65192cf1fc64a-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:07:22 GMT"
+    },
+    "https://visit.cstx.gov/events/remembering-the-fallen-2026/": {
+      "etag": "\"3a197-65192d4e82fae-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:59 GMT"
+    },
+    "https://visit.cstx.gov/events/free-stroller-strides-at-century-square-2/": {
+      "etag": "\"3b03f-65192d45efa96-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:50 GMT"
+    },
+    "https://visit.cstx.gov/events/stage-12-singo-summer-kickoff/": {
+      "etag": "\"37494-65192d46c96f8-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:51 GMT"
+    },
+    "https://visit.cstx.gov/events/live-music-the-tap-mack-geiger/": {
+      "etag": "\"372cc-65192d5ec70dc-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:16 GMT"
+    },
+    "https://visit.cstx.gov/events/reveille-rooftop-bar-live-music-dj-jayy-smith-4/": {
+      "etag": "\"37907-65192d571b2e6-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:08 GMT"
+    },
+    "https://www.theowlbcs.com/": {
+      "last_modified": "Mon, 11 May 2026 22:34:14 GMT"
+    },
+    "https://visit.cstx.gov/events/b-cs-silent-book-club-in-the-chancellor-speakeasy-2/": {
+      "etag": "\"37ada-65192d3673c8a-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:34 GMT"
+    },
+    "https://visit.cstx.gov/events/stage-12-singo-moms-mixtape/": {
+      "etag": "\"37522-65192d3864db0-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:36 GMT"
+    },
+    "https://visit.cstx.gov/events/moonlight-harvest-festival/": {
+      "etag": "\"378ab-65192d6483cec-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:22 GMT"
+    },
+    "https://visit.cstx.gov/events/moonlight-harvest-festival1/": {
+      "etag": "\"378a9-65192d6671f31-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:24 GMT"
+    },
+    "https://visit.cstx.gov/events/road-to-26-argentina-vs-honduras/": {
+      "etag": "\"3b154-65192d59fd76e-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:11 GMT"
+    },
+    "https://visit.cstx.gov/events/reveille-rooftop-bar-live-music-dallas-shipp/": {
+      "etag": "\"3792c-65192d3c375fa-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:40 GMT"
+    },
+    "https://visit.cstx.gov/events/celebrate-american-heritage-festival/": {
+      "etag": "\"3a8c1-65192d5bed8f4-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:13 GMT"
+    },
+    "https://visit.cstx.gov/events/market-on-the-green-2026-4/": {
+      "etag": "\"37cc2-65192d61a85c4-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:19 GMT"
+    },
+    "https://visit.cstx.gov/events/starlight-music-series-2026-2/": {
+      "etag": "\"3c005-65192d562bec3-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:07 GMT"
+    },
+    "https://visit.cstx.gov/events/pride-book-fair/": {
+      "etag": "\"378de-65192d60ab6e1-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:18 GMT"
+    },
+    "https://visit.cstx.gov/events/reveille-rooftop-bar-live-music-dj-adonis-4/": {
+      "etag": "\"37842-65192d4c8c0c8-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:57 GMT"
+    },
+    "https://visit.cstx.gov/events/office-of-the-dean-live-music-jerry-almarez/": {
+      "etag": "\"377fa-65192d5063733-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:01 GMT"
+    },
+    "https://visit.cstx.gov/events/daytime-harvest-festival1/": {
+      "etag": "\"378c2-65192d6766174-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:25 GMT"
+    },
+    "https://visit.cstx.gov/events/century-square-cinema-zootopia-2/": {
+      "etag": "\"3bc64-65192d5fbf19e-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:17 GMT"
+    },
+    "https://visit.cstx.gov/events/daytime-harvest-festival3/": {
+      "etag": "\"378c2-65192d6b3f71f-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:29 GMT"
+    },
+    "https://visit.cstx.gov/events/office-of-the-dean-live-music-tui-osborne-2/": {
+      "etag": "\"37974-65192d47bd93b-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:52 GMT"
+    },
+    "https://visit.cstx.gov/events/learning-libations-episode-4-pulp-fiction/": {
+      "etag": "\"3855f-65192d44e50f3-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:49 GMT"
+    },
+    "https://visit.cstx.gov/events/task-force-hogan-with-william-hogan/": {
+      "etag": "\"3a723-65192d41128a8-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:45 GMT"
+    },
+    "https://visit.cstx.gov/events/century-square-cinema-the-devil-wears-prada-2/": {
+      "etag": "\"3bfcc-65192d6c471e1-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:30 GMT"
+    },
+    "https://visit.cstx.gov/events/new-exhibit-the-brazos-legacy-of-a-mighty-river/": {
+      "etag": "\"37ff2-65192d3487985-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:32 GMT"
+    },
+    "https://visit.cstx.gov/events/aggieland-farmers-market/": {
+      "etag": "\"38e05-65192d35a3c68-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:33 GMT"
+    },
+    "https://visit.cstx.gov/events/moonlight-harvest-festival2/": {
+      "etag": "\"378ab-65192d6859416-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:26 GMT"
+    },
+    "https://visit.cstx.gov/events/office-of-the-dean-live-music-molly-mcdonald/": {
+      "etag": "\"379d6-65192d3b42418-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:39 GMT"
+    },
+    "https://visit.cstx.gov/events/learn-grow-eat-go-camp/": {
+      "etag": "\"3b225-65192d591316b-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:10 GMT"
+    },
+    "https://visit.cstx.gov/events/stage-12-live-music-charlie-weyler/": {
+      "etag": "\"377fe-65192d3d392fd-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:41 GMT"
+    },
+    "https://visit.cstx.gov/events/intro-to-eco-printing-workshop-with-open-studio-bcs/": {
+      "etag": "\"3ae71-65192d4017905-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:44 GMT"
+    },
+    "https://messinahof.com/bryan/": {
+      "last_modified": "Mon, 11 May 2026 23:07:22 GMT"
+    },
+    "https://www.fridaskitchenbcs.com/specials": {
+      "etag": "W/\"247b9678bfac159d586042025c2feb60--gzip\""
+    },
+    "https://visit.cstx.gov/events/wine-dinner-in-the-office-of-the-dean/": {
+      "etag": "\"37f47-65192d395bed2-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:37 GMT"
+    },
+    "https://visit.cstx.gov/events/reveille-rooftop-bar-live-music-dj-jayy-smith-3/": {
+      "etag": "\"37909-65192d42f7e4d-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:47 GMT"
+    },
+    "https://visit.cstx.gov/events/reveille-rooftop-bar-live-music-dj-jazzy-style-3/": {
+      "etag": "\"37950-65192d5437ebe-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:05 GMT"
+    },
+    "https://visit.cstx.gov/events/texas-music-scene-live-taping-concert/": {
+      "etag": "\"3b503-65192d420a96b-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:46 GMT"
+    },
+    "https://visit.cstx.gov/events/stage-12-singo-disco-night/": {
+      "etag": "\"37430-65192d4f83d11-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:00 GMT"
+    },
+    "https://visit.cstx.gov/events/14th-annual-wish-upon-a-butterfly/": {
+      "etag": "\"379ff-65192d6392989-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:21 GMT"
+    },
+    "https://visit.cstx.gov/events/office-of-the-dean-live-music-joey-mcgee/": {
+      "etag": "\"374f0-65192d524bbb8-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:03 GMT"
+    },
+    "https://visit.cstx.gov/events/stage-12-movie-night-inside-out/": {
+      "etag": "\"3767e-65192d4b93066-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:56 GMT"
+    },
+    "https://visit.cstx.gov/events/north-american-bike-polo-qualifier/": {
+      "etag": "\"37be1-65192d552efe1-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:06 GMT"
+    },
+    "https://visit.cstx.gov/events/century-square-cinema-spider-man-no-way-home/": {
+      "etag": "\"3bd06-65192d62ab266-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:20 GMT"
+    },
+    "https://visit.cstx.gov/events/bugs-n-blooms-camp/": {
+      "etag": "\"3b06c-65192d5af96b1-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:12 GMT"
+    },
+    "https://visit.cstx.gov/events/live-music-the-tap-carson-jeffery-band-fall-2026-blowout/": {
+      "etag": "\"37430-65192d6d2e904-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:31 GMT"
+    },
+    "https://visit.cstx.gov/events/starlight-music-series-2026-3/": {
+      "etag": "\"3c009-65192d5dd6d19-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:15 GMT"
+    },
+    "https://visit.cstx.gov/events/aiden-ross-homecoming/": {
+      "etag": "\"3aae8-65192d6e334e7-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:32 GMT"
+    },
+    "https://visit.cstx.gov/events/reveille-rooftop-bar-live-music-dj-stein-3/": {
+      "etag": "\"3762a-65192d4d8512b-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:58 GMT"
+    },
+    "https://visit.cstx.gov/events/stage-12-live-music-bad-455s/": {
+      "etag": "\"37883-65192d5341d3b-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:04 GMT"
+    },
+    "https://visit.cstx.gov/events/summer-nature-camp/": {
+      "etag": "\"37279-65192d580e589-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:09 GMT"
+    },
+    "https://visit.cstx.gov/events/texas-a-m-baseball-vs-mississippi-state/": {
+      "etag": "\"3add3-65192d3a52055-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:38 GMT"
+    },
+    "https://visit.cstx.gov/events/office-of-the-dean-live-music-reagan-quinn/": {
+      "etag": "\"37996-65192d4a9afa3-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:55 GMT"
+    },
+    "https://www.century-square.com/events/": {
+      "last_modified": "Mon, 11 May 2026 23:46:33 GMT"
+    },
+    "https://visit.cstx.gov/events/market-on-the-green-2026-5/": {
+      "etag": "\"3ad8a-65192d6a5129c-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:28 GMT"
+    },
+    "https://visit.cstx.gov/events/planting-positivity-spring-2026-gardens-volunteering-opportunities/": {
+      "etag": "\"3b011-65192d378c0ed-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:35 GMT"
+    },
+    "https://visit.cstx.gov/events/daytime-harvest-festival/": {
+      "etag": "\"378ba-65192d6578ece-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:23 GMT"
+    },
+    "https://visit.cstx.gov/events/memories-in-motion-graduation/": {
+      "etag": "\"3a435-65192d3f265a3-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:43 GMT"
+    },
+    "https://visit.cstx.gov/events/reveille-rooftop-bar-live-music-dj-franco-3/": {
+      "etag": "\"3799c-65192d3e267e0-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:42 GMT"
+    },
+    "https://visit.cstx.gov/events/reveille-rooftop-bar-live-music-the-briscoes/": {
+      "etag": "\"379f7-65192d515c796-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:02 GMT"
+    },
+    "https://visit.cstx.gov/events/vendor-market-at-hotel-mccoy-3/": {
+      "etag": "\"382b5-65192d49a7d00-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:54 GMT"
+    },
+    "https://visit.cstx.gov/events/cars-and-chicken-3/": {
+      "etag": "\"3ad34-65192d43f5cd0-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:08:48 GMT"
+    },
+    "https://visit.cstx.gov/events/market-on-the-green-2026-3/": {
+      "etag": "\"37cc2-65192d5cd9e36-gzip\"",
+      "last_modified": "Mon, 11 May 2026 23:09:14 GMT"
+    }
+  },
+  "last_run": "2026-05-11T23:46:49.268004",
+  "run_count": 8
+}

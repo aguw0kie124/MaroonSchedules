@@ -638,5 +638,29 @@ def rebuild_index(verbose: bool) -> None:
         print(f"  📄 {f}")
 
 
+@cli.command(name="crawl-business-deals")
+@click.option("--dry-run", is_flag=True, default=False, help="Run the off-campus business pipeline without scraping")
+@click.option("--verbose", "-v", is_flag=True, default=False, help="Debug logging")
+def crawl_business_deals(dry_run: bool, verbose: bool) -> None:
+    """Build TAMU-adjacent off-campus business events and promotions."""
+    setup_logging(verbose)
+    logger.info("TAMU business deals pipeline starting...")
+
+    from tamu_business_deals.pipeline import run_business_deals_pipeline_sync
+
+    result = run_business_deals_pipeline_sync(dry_run=dry_run)
+    print("\nBusiness deals pipeline complete:")
+    print(f"  Businesses exported: {result.get('business_count', 0)}")
+    print(f"  Deal/event records:   {result.get('record_count', 0)}")
+    if result.get("catalog_csv"):
+        print(f"  Catalog CSV:         {result['catalog_csv']}")
+    if result.get("deals_csv"):
+        print(f"  Deals CSV:           {result['deals_csv']}")
+    if result.get("deals_jsonl"):
+        print(f"  Deals JSONL:         {result['deals_jsonl']}")
+    if result.get("next_sources"):
+        print(f"  Next sources map:    {result['next_sources']}")
+
+
 if __name__ == "__main__":
     cli()

@@ -12,7 +12,8 @@ export function useEvents() {
       setError(null);
       const res = await fetch(TAMU_EVENTS_API);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const raw = (await res.json()) as CampusEventResponse[];
+      const payload = (await res.json()) as { events?: CampusEventResponse[] } | CampusEventResponse[];
+      const raw = Array.isArray(payload) ? payload : payload.events || [];
       
       const parsed: TAMUEvent[] = raw
         .filter((event) => event && event.event_id && event.title && event.start_time)
@@ -32,13 +33,23 @@ export function useEvents() {
             tags: event.tags || null,
             access_tags: event.access_tags || null,
             event_types: event.has_food ? ['Free Food'] : null,
-            group_title: event.host_name || event.source_name || '',
+            group_title: event.organization_name || event.business_name || event.host_name || event.source_name || '',
             location_lat: event.location_lat ?? null,
             location_lng: event.location_lng ?? null,
             has_food: !!event.has_food,
             food_confidence: event.food_confidence ?? 0,
             food_type: event.food_type ?? null,
             categories: event.categories || undefined,
+            imageUrl: event.image_url ?? null,
+            area_label: event.area_label ?? null,
+            city: event.city ?? null,
+            business_name: event.business_name ?? null,
+            is_off_campus: !!event.is_off_campus,
+            is_promotion: !!event.is_promotion,
+            discount_text: event.discount_text ?? null,
+            campus_interest_score: event.campus_interest_score ?? null,
+            campus_interest_label: event.campus_interest_label ?? null,
+            campus_interest_reasons: event.campus_interest_reasons ?? null,
           };
         })
         .map((event) => {

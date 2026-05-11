@@ -52,6 +52,7 @@ export function useEventFilters(
       Sports: 0,
       Academic: 0,
       Food: 0,
+      Promotions: 0,
       Social: 0,
       'Health & Wellness': 0,
       Entertainment: 0,
