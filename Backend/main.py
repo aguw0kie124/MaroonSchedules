@@ -246,6 +246,142 @@ def get_course(course_id: str):
     return course
 
 
+@protected_router.get("/professors/search")
+def search_professor(name: str = Query(..., description="Professor name to search for")):
+    """
+    Search for a professor by name and return their profile + top 10 written reviews.
+    Data sources (in priority order):
+      1. master_professors.txt (has recent_reviews for many profs)
+      2. Individual professor_{id}.txt files (has recent_reviews)
+      3. Individual professor_{id}_reviews.txt files (full review history)
+      4. External API (basic info only, no reviews)
+    """
+    from repositories import course_repository
+    import json, os
+
+    data_dir = os.path.join(os.path.dirname(__file__), "Data", "Professors")
+    query = name.upper().strip()
+    # Grade data uses "LASTNAME, F" — extract the last name for matching
+    query_parts = [p.strip() for p in query.replace(",", " ").split() if len(p.strip()) > 1]
+
+    def name_matches(prof_name: str) -> bool:
+        """Check if a professor name matches the query."""
+        if not prof_name:
+            return False
+        pn = prof_name.upper().strip()
+        # Exact match
+        if pn == query:
+            return True
+        # Check if any query part appears in the prof name parts
+        pn_parts = pn.replace(",", " ").split()
+        return any(qp in pn_parts for qp in query_parts if len(qp) > 2)
+
+    # ── Source 1: master_professors.txt ────────────────────────
+    master_file = os.path.join(data_dir, "master_professors.txt")
+    master_match = None
+    if os.path.exists(master_file):
+        try:
+            with open(master_file, encoding="utf-8") as f:
+                master_data = json.load(f)
+            for p in master_data:
+                if name_matches(p.get("name", "")):
+                    master_match = p
+                    break
+        except Exception as e:
+            print(f"Error reading master_professors.txt: {e}")
+
+    if master_match:
+        reviews = master_match.get("recent_reviews", [])
+        # If master doesn't have reviews, try the individual files
+        prof_id = master_match.get("id", "")
+
+        if not reviews and prof_id:
+            # Try individual professor file
+            prof_file = os.path.join(data_dir, f"professor_{prof_id}.txt")
+            if os.path.exists(prof_file):
+                try:
+                    with open(prof_file, encoding="utf-8") as f:
+                        prof_data = json.load(f)
+                    reviews = prof_data.get("recent_reviews", [])
+                    if not master_match.get("overallSummary"):
+                        master_match["overallSummary"] = prof_data.get("overallSummary")
+                except Exception:
+                    pass
+
+            # Try reviews file
+            if not reviews:
+                reviews_file = os.path.join(data_dir, f"professor_{prof_id}_reviews.txt")
+                if os.path.exists(reviews_file):
+                    try:
+                        with open(reviews_file, encoding="utf-8") as f:
+                            all_reviews = json.load(f)
+                        all_reviews.sort(key=lambda r: r.get("review_date", ""), reverse=True)
+                        reviews = all_reviews[:10]
+                    except Exception:
+                        pass
+
+        return {
+            "id": master_match.get("id"),
+            "name": master_match.get("name"),
+            "overall_rating": master_match.get("overall_rating"),
+            "total_reviews": master_match.get("total_reviews"),
+            "would_take_again_percent": master_match.get("would_take_again_percent"),
+            "courses": master_match.get("courses", []),
+            "departments": master_match.get("departments", []),
+            "overallSummary": master_match.get("overallSummary"),
+            "reviews": (reviews or [])[:10],
+        }
+
+    # ── Source 2: External API professors ─────────────────────
+    professors = course_repository._fetch_professors()
+    api_match = None
+    for p in professors:
+        if name_matches(p.get("name", "")):
+            api_match = p
+            break
+
+    if not api_match:
+        raise HTTPException(status_code=404, detail="Professor not found")
+
+    prof_id = api_match.get("id", "")
+    reviews = []
+
+    # Try individual data files
+    prof_file = os.path.join(data_dir, f"professor_{prof_id}.txt")
+    overall_summary = None
+    if os.path.exists(prof_file):
+        try:
+            with open(prof_file, encoding="utf-8") as f:
+                prof_data = json.load(f)
+            reviews = prof_data.get("recent_reviews", [])[:10]
+            overall_summary = prof_data.get("overallSummary")
+        except Exception:
+            pass
+
+    if not reviews:
+        reviews_file = os.path.join(data_dir, f"professor_{prof_id}_reviews.txt")
+        if os.path.exists(reviews_file):
+            try:
+                with open(reviews_file, encoding="utf-8") as f:
+                    all_reviews = json.load(f)
+                all_reviews.sort(key=lambda r: r.get("review_date", ""), reverse=True)
+                reviews = all_reviews[:10]
+            except Exception:
+                pass
+
+    return {
+        "id": prof_id,
+        "name": api_match.get("name"),
+        "overall_rating": api_match.get("overall_rating"),
+        "total_reviews": api_match.get("total_reviews"),
+        "would_take_again_percent": api_match.get("would_take_again_percent"),
+        "courses": api_match.get("courses", []) or api_match.get("courses_taught", []),
+        "departments": api_match.get("departments", []),
+        "overallSummary": overall_summary,
+        "reviews": reviews,
+    }
+
+
 @protected_router.get("/sections/{section_id}")
 def get_section(section_id: str):
     from repositories import course_repository

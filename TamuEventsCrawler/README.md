@@ -30,6 +30,9 @@ python crawler.py crawl --source=main_calendar
 
 # 5. View stats
 python crawler.py stats
+
+# 6. Build off-campus TAMU-adjacent events + promotions
+python crawler.py crawl-business-deals
 ```
 
 ## Output
@@ -48,6 +51,13 @@ Events are written to `data/normalized/events.jsonl` — one JSON object per lin
   ...
 }
 ```
+
+Off-campus business events and promotions are written to `tamu_business_deals/output/`:
+
+- `business_deals.json`
+- `business_deals.jsonl`
+- `business_deals.csv`
+- `local_businesses.csv`
 
 ## Architecture
 

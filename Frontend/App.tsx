@@ -37,6 +37,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
+import { GradesTabScreen } from './components/GradesTabScreen';
 import { GPACalculatorScreen } from './components/GPACalculatorScreen';
 import { TimerScreen } from './components/TimerScreen';
 
@@ -52,7 +53,7 @@ import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 import RestaurantMenuScreen from './components/dining/RestaurantMenuScreen';
 
-import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio, UserRound, LayoutGrid, RotateCw, LibraryBig } from 'lucide-react-native';
+import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio, UserRound, LayoutGrid, RotateCw, LibraryBig, BarChart2 } from 'lucide-react-native';
 import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
@@ -268,6 +269,7 @@ const AnimatedSocialScreen = withTabMotion(SocialHubScreen, 10);
 const AnimatedDiningScreen = withTabMotion(DiningDashboard, 30);
 const AnimatedClubsScreen = withTabMotion(ClubAccessScreen, 50);
 const AnimatedSettingsScreen = withTabMotion(Profile, 90);
+const AnimatedGradesTabScreen = withTabMotion(GradesTabScreen, 60);
 
 function MainTabs(props: any) {
   const { COLORS } = useTheme();
@@ -316,6 +318,14 @@ function MainTabs(props: any) {
           component: AnimatedDiningScreen,
           title: 'Dining',
           icon: UtensilsCrossed,
+        };
+      }
+      if (item.id === 'Grades') {
+        return {
+          name: 'Grades',
+          component: AnimatedGradesTabScreen,
+          title: 'Grades',
+          icon: BarChart2,
         };
       }
       return null;

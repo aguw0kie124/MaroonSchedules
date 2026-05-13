@@ -57,6 +57,7 @@ import {
   Pizza,
   Search,
   Share2,
+  SlidersHorizontal,
 
   Ticket,
   Trash2,
@@ -124,6 +125,13 @@ interface CampusEventResponse {
   campus_interest_score?: number | null;
   campus_interest_label?: 'low' | 'medium' | 'high' | null;
   campus_interest_reasons?: string[] | null;
+  event_scope?: string | null;
+  area_label?: string | null;
+  is_off_campus?: boolean;
+  is_promotion?: boolean;
+  city?: string | null;
+  business_name?: string | null;
+  discount_text?: string | null;
 }
 
 interface TAMUEvent {
@@ -153,6 +161,13 @@ interface TAMUEvent {
   campus_interest_score?: number | null;
   campus_interest_label?: 'low' | 'medium' | 'high' | null;
   campus_interest_reasons?: string[] | null;
+  event_scope?: string | null;
+  area_label?: string | null;
+  is_off_campus?: boolean;
+  is_promotion?: boolean;
+  city?: string | null;
+  business_name?: string | null;
+  discount_text?: string | null;
   _searchBlob?: string;
   _category?: ExploreCategory;
   _socialMode?: SocialMode;
@@ -165,6 +180,7 @@ type ExploreCategory =
   | 'Featured'
   | 'For U'
   | 'Food'
+  | 'Promotions'
   | 'Sports'
   | 'Social'
   | 'Miscellaneous'
@@ -178,6 +194,7 @@ type StandardExploreCategory = Exclude<ExploreCategory, 'For U' | 'Featured'>;
 type SocialMode = 'casual' | 'professional';
 type EventsView = 'discover' | 'list' | 'swipe' | 'inbox';
 type PreferredTimeOption = 'Morning' | 'Afternoon' | 'Evening' | 'Anytime' | null;
+type DateFilterOption = 'Any Time' | 'Today' | 'This Week' | 'This Weekend' | 'Next 7 Days';
 
 type DiscoverSection = {
   key: Exclude<ExploreCategory, 'Featured'>;
@@ -199,6 +216,7 @@ const ALL_CATEGORIES: ExploreCategory[] = [
   'Sports',
   'Academic',
   'Food',
+  'Promotions',
   'Social',
   'Health & Wellness',
   'Entertainment',
@@ -215,6 +233,7 @@ const DISCOVER_SECTION_ORDER: StandardExploreCategory[] = [
   'Sports',
   'Academic',
   'Food',
+  'Promotions',
   'Social',
   'Entertainment',
   'Health & Wellness',
@@ -225,12 +244,15 @@ const DISCOVER_SECTION_TITLES: Record<Exclude<ExploreCategory, 'Featured'>, stri
   Academic: 'Academic & Career',
   Sports: 'Sports',
   Food: 'Food',
+  Promotions: 'Promotions',
   Social: 'Social',
   Entertainment: 'Entertainment',
   'Health & Wellness': 'Health & Wellness',
   Advocacy: 'Advocacy',
   Miscellaneous: 'More to Explore',
 };
+const DEFAULT_LOCATION_FILTER = 'Everywhere';
+const DATE_FILTER_OPTIONS: DateFilterOption[] = ['Any Time', 'Today', 'This Week', 'This Weekend', 'Next 7 Days'];
 
 const INTEREST_SIGNAL_CONFIG: Record<string, { categories: StandardExploreCategory[]; keywords: string[] }> = {
   fitness: {
@@ -395,7 +417,7 @@ function getPersonalizationScore(
   preferredTime: PreferredTimeOption,
   preferredMajor: MajorOption | null,
 ) {
-  let score = 0;
+  let score = Math.max(0, (event.campus_interest_score ?? 42) / 8);
   const category = event._category || classifyCategory(event);
   const categoryIndex = preferredCategories.indexOf(category);
   if (categoryIndex >= 0) {
@@ -478,6 +500,13 @@ export const CATEGORY_META: Record<
     cardTint: '#6EBF7E',
     icon: Pizza,
   },
+  Promotions: {
+    accent: '#FFD59E',
+    chipBg: '#FFF0DB',
+    chipText: '#7A4A11',
+    cardTint: '#F2A75B',
+    icon: Megaphone,
+  },
   Social: {
     accent: '#F7B4B8',
     chipBg: '#FFD7DA',
@@ -554,6 +583,10 @@ function getSearchBlob(event: TAMUEvent) {
     event.location,
     event.location_title,
     event.group_title,
+    event.area_label,
+    event.city,
+    event.business_name,
+    event.discount_text,
     ...(event.tags || []),
     ...(event.access_tags || []),
     ...(event.event_types || []),
@@ -567,10 +600,88 @@ function resolveEventImageUrl(value?: string | null) {
   return normalizeImageUrl(value);
 }
 
+function joinMetaParts(...parts: Array<string | null | undefined>) {
+  return parts
+    .map((part) => (part || '').trim())
+    .filter((part, index, array) => part.length > 0 && array.indexOf(part) === index)
+    .join(' • ');
+}
+
+function getEventAreaLabel(event: TAMUEvent) {
+  return event.area_label || (event.is_off_campus ? event.city || 'Off Campus' : 'Campus');
+}
+
+function getEventScopeLabel(event: TAMUEvent) {
+  if (event.is_admin_event) return 'Official Campus';
+  if (event.is_promotion) return 'Promotion';
+  if (event.is_off_campus) return 'Off Campus';
+  return 'Campus';
+}
+
+function getEventBadgeLabel(event: TAMUEvent) {
+  if (event.is_admin_event) return 'Official';
+  if (event.is_off_campus) return getEventAreaLabel(event);
+  return null;
+}
+
+function getEventContextLine(event: TAMUEvent) {
+  return joinMetaParts(
+    getEventScopeLabel(event),
+    event.group_title || event.business_name || null,
+    event.is_off_campus ? getEventAreaLabel(event) : null,
+  );
+}
+
+function matchesDateFilter(event: TAMUEvent, filter: DateFilterOption, referenceTs: number) {
+  if (filter === 'Any Time') return true;
+
+  const eventDate = new Date(event.date_ts * 1000);
+  const referenceDate = new Date(referenceTs * 1000);
+  const startOfToday = new Date(referenceDate);
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfEventDay = new Date(eventDate);
+  startOfEventDay.setHours(0, 0, 0, 0);
+  const diffDays = Math.floor((startOfEventDay.getTime() - startOfToday.getTime()) / 86400000);
+
+  if (filter === 'Today') {
+    return diffDays === 0;
+  }
+  if (filter === 'Next 7 Days') {
+    return diffDays >= 0 && diffDays <= 6;
+  }
+  if (filter === 'This Week') {
+    return diffDays >= 0 && diffDays <= 7;
+  }
+  if (filter === 'This Weekend') {
+    const day = eventDate.getDay();
+    return diffDays >= 0 && diffDays <= 7 && (day === 5 || day === 6 || day === 0);
+  }
+  return true;
+}
+
+function matchesLocationFilter(event: TAMUEvent, filter: string) {
+  if (!filter || filter === DEFAULT_LOCATION_FILTER) {
+    return true;
+  }
+  if (filter === 'Campus') {
+    return !event.is_off_campus;
+  }
+  const area = getEventAreaLabel(event).toLowerCase();
+  const city = (event.city || '').toLowerCase();
+  const location = (event.location || '').toLowerCase();
+  const normalizedFilter = filter.toLowerCase();
+  return (
+    area === normalizedFilter ||
+    city === normalizedFilter ||
+    location.includes(normalizedFilter)
+  );
+}
+
 function classifyCategory(event: TAMUEvent): ExploreCategory {
   if (event.is_admin_event) return 'Featured';
   if (event.categories) {
     if (event.categories.featured) return 'Featured';
+    if (event.categories.promotions || event.is_promotion) return 'Promotions';
     if (event.categories.food) return 'Food';
     if (event.categories.sports) return 'Sports';
     if (event.categories.entertainment) return 'Entertainment';
@@ -582,6 +693,7 @@ function classifyCategory(event: TAMUEvent): ExploreCategory {
   }
 
   const blob = getSearchBlob(event);
+  if (event.is_promotion || /\bpromotion\b|\bspecial\b|\bdiscount\b|\bcoupon\b|\bhappy hour\b|\bstudent night\b/.test(blob)) return 'Promotions';
   if (event.has_food || /\bfood\b|\bmeal\b|\bdinner\b|\blunch\b|\bbreakfast\b|\bpizza\b|\brefreshments\b/.test(blob)) return 'Food';
   if (/\bsport\b|\bgame\b|\bmatch\b|\btournament\b|\bathletic\b|\bworkout\b/.test(blob)) return 'Sports';
   if (/\bconcert\b|\bshow\b|\bmovie\b|\bcomedy\b|\bmusic\b|\bperformance\b|\bfestival\b/.test(blob)) return 'Entertainment';
@@ -877,6 +989,9 @@ function sortDiscoverRailEvents(left: TAMUEvent, right: TAMUEvent) {
   const scoreDiff = (right._forYouScore ?? 0) - (left._forYouScore ?? 0);
   if (scoreDiff !== 0) return scoreDiff;
 
+  const interestDiff = (right.campus_interest_score ?? 0) - (left.campus_interest_score ?? 0);
+  if (interestDiff !== 0) return interestDiff;
+
   return left.date_ts - right.date_ts;
 }
 
@@ -1084,6 +1199,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   );
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDateFilter, setSelectedDateFilter] = useState<DateFilterOption>('Any Time');
+  const [selectedLocationFilter, setSelectedLocationFilter] = useState(DEFAULT_LOCATION_FILTER);
   const [isSearching, setIsSearching] = useState(false);
   const [detailEvent, setDetailEvent] = useState<TAMUEvent | null>(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
@@ -1174,7 +1291,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             tags: event.tags || null,
             access_tags: event.access_tags || null,
             event_types: event.has_food ? ['Free Food'] : null,
-            group_title: event.organization_name || (isInternalSourceName(event.host_name) ? '' : event.host_name) || '',
+            group_title:
+              event.organization_name ||
+              event.business_name ||
+              (isInternalSourceName(event.host_name) ? '' : event.host_name) ||
+              '',
             location_lat: event.location_lat ?? null,
             location_lng: event.location_lng ?? null,
             has_food: !!event.has_food,
@@ -1188,6 +1309,13 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             campus_interest_score: event.campus_interest_score ?? null,
             campus_interest_label: event.campus_interest_label ?? null,
             campus_interest_reasons: event.campus_interest_reasons ?? null,
+            event_scope: event.event_scope ?? null,
+            area_label: event.area_label ?? null,
+            is_off_campus: !!event.is_off_campus,
+            is_promotion: !!event.is_promotion,
+            city: event.city ?? null,
+            business_name: event.business_name ?? null,
+            discount_text: event.discount_text ?? null,
           };
         })
         .map((event) => {
@@ -1347,6 +1475,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       Sports: 0,
       Academic: 0,
       Food: 0,
+      Promotions: 0,
       Social: 0,
       'Health & Wellness': 0,
       Entertainment: 0,
@@ -1358,6 +1487,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       const isOngoing = (event.date2_ts != null && event.date2_ts > nowTs) || (event.date_ts >= nowTs - 7200);
       if (!isOngoing) return;
       if (isMajorSpecific && !matchesMajor(event, selectedMajor)) return;
+      if (!matchesDateFilter(event, selectedDateFilter, nowTs)) return;
+      if (!matchesLocationFilter(event, selectedLocationFilter)) return;
       if (event._forYouMatched) {
         counts['For U'] += 1;
       }
@@ -1366,7 +1497,25 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     });
 
     return counts;
-  }, [isMajorSpecific, nowTs, personalizedEvents, selectedMajor]);
+  }, [isMajorSpecific, nowTs, personalizedEvents, selectedDateFilter, selectedLocationFilter, selectedMajor]);
+
+  const locationFilterOptions = useMemo(() => {
+    const labels = new Set<string>(['Campus']);
+    personalizedEvents.forEach((event) => {
+      if (event.is_off_campus) {
+        labels.add(getEventAreaLabel(event));
+      }
+    });
+    return [DEFAULT_LOCATION_FILTER, ...Array.from(labels)];
+  }, [personalizedEvents]);
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (isMajorSpecific) count += 1;
+    if (selectedDateFilter !== 'Any Time') count += 1;
+    if (selectedLocationFilter !== DEFAULT_LOCATION_FILTER) count += 1;
+    return count;
+  }, [isMajorSpecific, selectedDateFilter, selectedLocationFilter]);
 
   const allFilterCount = useMemo(() => {
     let next = personalizedEvents.filter((event) => {
@@ -1382,10 +1531,22 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       next = next.filter((event) => matchesMajor(event, selectedMajor) || event.is_admin_event);
     }
 
+    next = next.filter((event) => matchesDateFilter(event, selectedDateFilter, nowTs));
+    next = next.filter((event) => matchesLocationFilter(event, selectedLocationFilter));
+
     next = next.filter((event) => !dislikedEventIds.includes(String(event.id)));
 
     return next.length;
-  }, [deferredSearchQuery, dislikedEventIds, isMajorSpecific, nowTs, personalizedEvents, selectedMajor]);
+  }, [
+    deferredSearchQuery,
+    dislikedEventIds,
+    isMajorSpecific,
+    nowTs,
+    personalizedEvents,
+    selectedDateFilter,
+    selectedLocationFilter,
+    selectedMajor,
+  ]);
 
   const standardSelectedCategories = useMemo(
     () =>
@@ -1413,6 +1574,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     if (isMajorSpecific) {
       next = next.filter((event) => matchesMajor(event, selectedMajor) || (isFeaturedSelected && event.is_admin_event));
     }
+
+    next = next.filter((event) => matchesDateFilter(event, selectedDateFilter, nowTs));
+    next = next.filter((event) => matchesLocationFilter(event, selectedLocationFilter));
 
     // Apply category filters with Featured union semantics:
     // When Featured is active, admin events always pass through regardless of other filters
@@ -1501,6 +1665,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     preferredSocialMode,
     isAllSelected,
     selectedCategories,
+    selectedDateFilter,
+    selectedLocationFilter,
     socialMode,
     standardSelectedCategories,
     personalizationMajor,
@@ -1515,10 +1681,13 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       next = next.filter((event) => matchesMajor(event, selectedMajor) || event.is_admin_event);
     }
 
+    next = next.filter((event) => matchesDateFilter(event, selectedDateFilter, nowTs));
+    next = next.filter((event) => matchesLocationFilter(event, selectedLocationFilter));
+
     next = next.filter((event) => !dislikedEventIds.includes(String(event.id)));
 
     return [...next].sort(sortDiscoverRailEvents);
-  }, [dislikedEventIds, isMajorSpecific, nowTs, personalizedEvents, selectedMajor]);
+  }, [dislikedEventIds, isMajorSpecific, nowTs, personalizedEvents, selectedDateFilter, selectedLocationFilter, selectedMajor]);
 
   const discoverHeroEvents = useMemo(
     () => [...discoverSourceEvents].sort(sortDiscoverHeroEvents).slice(0, DISCOVER_HERO_LIMIT),
@@ -1616,6 +1785,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     selectedCategories,
     socialMode,
     deferredSearchQuery,
+    selectedDateFilter,
+    selectedLocationFilter,
     isMajorSpecific,
     selectedMajor,
     profileMajor,
@@ -1758,9 +1929,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       const prefs = useAppShellStore.getState();
       const leadTime = prefs.notificationLeadTime;
       if (prefs.eventNotifications) {
+        const locationLabel = event.location || (event.is_off_campus ? 'off campus' : 'TAMU');
         scheduleEventNotification(
           event.title,
-          `Starting at ${event.location || 'TAMU'} in ${leadTime} minutes.`,
+          `Starting at ${locationLabel} in ${leadTime} minutes.`,
           new Date(event.date_ts * 1000),
           leadTime
         );
@@ -1799,9 +1971,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   );
 
   const handleShare = useCallback((event: TAMUEvent) => {
+    const itemLabel = event.is_promotion ? 'promotion' : 'event';
     triggerNativeShare({
       title: event.title,
-      message: `Check out this event: ${event.title} at ${event.location || 'TAMU'}!`,
+      message: `Check out this ${itemLabel}: ${event.title} at ${event.location || (event.is_off_campus ? 'off campus' : 'TAMU')}!`,
       url: event.url || 'https://maroonschedules.tamu.edu',
       id: event.id,
       type: 'event',
@@ -1811,6 +1984,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const handleMapOpen = useCallback(
     (event: TAMUEvent) => {
       if (event.location_lat != null && event.location_lng != null) {
+        if (event.is_off_campus) {
+          openNativeMaps(event.location_lat, event.location_lng, event.location || event.title);
+          return;
+        }
         navigation.navigate('Main', {
           screen: 'Places',
           params: {
@@ -1996,6 +2173,16 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       <View style={s.headerTopRow}>
         <View style={{ flex: 1 }}>
           <Text style={s.pageTitle}>{title}</Text>
+        </View>
+        <View style={s.headerRightActions}>
+          <Pressable style={s.headerIconButton} onPress={() => setSettingsVisible(true)}>
+            <SlidersHorizontal size={18} color={COLORS.textPrimary} />
+            {activeFilterCount > 0 ? (
+              <View style={s.headerBadge}>
+                <Text style={s.headerBadgeText}>{activeFilterCount}</Text>
+              </View>
+            ) : null}
+          </Pressable>
         </View>
       </View>
 
@@ -2188,7 +2375,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             <Text style={s.emptySubtitle}>
               {isMajorSpecific
                 ? 'Try turning off major-specific filtering or pull to refresh for more events.'
-                : 'Pull to refresh or check back in a bit for more campus events.'}
+                : 'Pull to refresh or check back in a bit for more campus and nearby events.'}
             </Text>
             <Pressable
               style={[s.emptyActionButton, { backgroundColor: COLORS.primary }]}
@@ -2258,7 +2445,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             {loading ? (
               <View style={s.loadingWrap}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={s.loadingText}>Loading campus events...</Text>
+                <Text style={s.loadingText}>Loading campus and nearby events...</Text>
               </View>
             ) : (
               renderHorizontalDiscover()
@@ -2272,7 +2459,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             {loading ? (
               <View style={s.loadingWrap}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={s.loadingText}>Loading campus events...</Text>
+                <Text style={s.loadingText}>Loading campus and nearby events...</Text>
               </View>
             ) : (
               renderVerticalFeed()
@@ -2289,14 +2476,23 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               <Search size={18} color={COLORS.textTertiary} />
               <TextInput
                 style={s.searchInput}
-                placeholder="Search campus events..."
+                placeholder="Search campus and nearby events..."
                 placeholderTextColor={COLORS.textTertiary}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 clearButtonMode="while-editing"
               />
             </View>
+            <Pressable style={s.filterButton} onPress={() => setSettingsVisible(true)}>
+              <SlidersHorizontal size={18} color={COLORS.textPrimary} />
+            </Pressable>
           </View>
+
+          {(selectedDateFilter !== 'Any Time' || selectedLocationFilter !== DEFAULT_LOCATION_FILTER) ? (
+            <Text style={[s.filterHintText, { paddingHorizontal: 20, marginTop: -2, marginBottom: 10 }]}>
+              {joinMetaParts(selectedDateFilter !== 'Any Time' ? selectedDateFilter : null, selectedLocationFilter !== DEFAULT_LOCATION_FILTER ? selectedLocationFilter : null)}
+            </Text>
+          ) : null}
 
           <View style={[s.categoryWrap, { marginBottom: 16, marginTop: 4 }]}>
                 <ScrollView
@@ -2320,7 +2516,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           {loading ? (
             <View style={s.loadingWrap}>
               <ActivityIndicator size="large" color={COLORS.primary} />
-              <Text style={s.loadingText}>Loading campus events...</Text>
+              <Text style={s.loadingText}>Loading campus and nearby events...</Text>
             </View>
           ) : (
             <FlatList
@@ -2375,12 +2571,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                       ? 'Add your profile preferences in onboarding or planner settings, then try For U again.'
                       : 'Try another category, turn off major-specific filtering, or clear hidden events.'}
                   </Text>
-                  {(searchQuery || isMajorSpecific || !isAllSelected) && (
+                  {(searchQuery || isMajorSpecific || !isAllSelected || selectedDateFilter !== 'Any Time' || selectedLocationFilter !== DEFAULT_LOCATION_FILTER) && (
                     <Pressable
                       style={[s.emptyActionButton, { backgroundColor: COLORS.primary }]}
                       onPress={() => {
                         setSearchQuery('');
                         setMajorSpecific(false);
+                        setSelectedDateFilter('Any Time');
+                        setSelectedLocationFilter(DEFAULT_LOCATION_FILTER);
                         setSelectedCategories(new Set<ListFilterOption>(DEFAULT_SELECTED_CATEGORIES));
                       }}
                     >
@@ -2478,6 +2676,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         socialMode={socialMode}
         setSocialMode={setSocialMode}
         selectedCategories={selectedCategories}
+        selectedDateFilter={selectedDateFilter}
+        setSelectedDateFilter={setSelectedDateFilter}
+        selectedLocationFilter={selectedLocationFilter}
+        setSelectedLocationFilter={setSelectedLocationFilter}
+        locationOptions={locationFilterOptions}
         dislikedEventIds={dislikedEventIds}
         events={personalizedEvents}
         onRestoreCategory={handleRestoreCategory}
@@ -2685,6 +2888,7 @@ function HeroEventCard({
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
   const eventImage = getEventImage(event as any);
+  const badgeLabel = getEventBadgeLabel(event);
   const handleSchedulePress = (e: any) => {
     e.stopPropagation();
     onSchedule();
@@ -2723,10 +2927,9 @@ function HeroEventCard({
         <View style={stylesStatic.heroCategoryPill}>
           <Text style={stylesStatic.heroCategoryText}>{category}</Text>
         </View>
-        {event.group_title ? (
+        {badgeLabel ? (
           <View style={stylesStatic.verifiedPill}>
-            <BadgeCheck size={14} color="#FFFFFF" />
-            <Text style={stylesStatic.verifiedText}>Verified</Text>
+            <Text style={stylesStatic.verifiedText}>{badgeLabel}</Text>
           </View>
         ) : null}
       </View>
@@ -2747,8 +2950,14 @@ function HeroEventCard({
         </View>
         <View style={stylesStatic.heroMetaRow}>
           <MapPin size={17} color="#FFFFFF" />
-          <Text style={stylesStatic.heroMetaText}>{event.location || 'Campus'}</Text>
+          <Text style={stylesStatic.heroMetaText}>{event.location || getEventAreaLabel(event)}</Text>
         </View>
+        {getEventContextLine(event) ? (
+          <View style={stylesStatic.heroMetaRow}>
+            <Users size={16} color="#FFFFFF" />
+            <Text style={stylesStatic.heroMetaText}>{getEventContextLine(event)}</Text>
+          </View>
+        ) : null}
       </ScrollView>
 
       <View style={stylesStatic.heroActionRow}>
@@ -2792,6 +3001,7 @@ function DiscoverRailCard({
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
   const eventImage = getEventImage(event as any);
+  const contextLine = getEventContextLine(event);
 
   return (
     <Pressable
@@ -2837,6 +3047,14 @@ function DiscoverRailCard({
         </View>
 
         <View style={stylesStatic.discoverRailMetaBlock}>
+          {contextLine ? (
+            <View style={stylesStatic.discoverRailMetaRow}>
+              <Megaphone size={14} color={COLORS.primary} />
+              <Text style={[stylesStatic.discoverRailMetaText, { color: COLORS.textSecondary }]} numberOfLines={1}>
+                {contextLine}
+              </Text>
+            </View>
+          ) : null}
           <View style={stylesStatic.discoverRailMetaRow}>
             <CalendarIcon size={14} color={COLORS.primary} />
             <Text style={[stylesStatic.discoverRailMetaText, { color: COLORS.textSecondary }]} numberOfLines={1}>
@@ -2846,7 +3064,7 @@ function DiscoverRailCard({
           <View style={stylesStatic.discoverRailMetaRow}>
             <MapPin size={14} color={COLORS.primary} />
             <Text style={[stylesStatic.discoverRailMetaText, { color: COLORS.textSecondary }]} numberOfLines={1}>
-              {event.location || 'Campus'}
+              {event.location || getEventAreaLabel(event)}
             </Text>
           </View>
         </View>
@@ -2879,6 +3097,7 @@ function ListEventRow({
   const category = classifyCategory(event);
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
+  const contextLine = getEventContextLine(event);
 
   return (
     <Pressable
@@ -2902,15 +3121,15 @@ function ListEventRow({
           <Text style={[stylesStatic.listTitle, { color: COLORS.textPrimary, fontSize: 15 }]} numberOfLines={1}>
             {event.title}
           </Text>
-          {event.group_title ? <BadgeCheck size={14} color="#2F80ED" /> : null}
+          {event.is_admin_event ? <BadgeCheck size={14} color="#2F80ED" /> : null}
         </View>
-        {event.group_title ? (
+        {contextLine ? (
           <Text style={[stylesStatic.listMeta, { color: COLORS.primary, fontSize: 13 }]} numberOfLines={1}>
-            {event.group_title}
+            {contextLine}
           </Text>
         ) : null}
         <Text style={[stylesStatic.listMeta, { color: COLORS.textSecondary, fontSize: 13 }]} numberOfLines={1}>
-          {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
+          {joinMetaParts(formatDate(event.date_ts), formatTime(event.date_ts), event.location || getEventAreaLabel(event))}
         </Text>
       </View>
       <View style={{ justifyContent: 'center', alignItems: 'center' }}>
@@ -2966,6 +3185,11 @@ function SettingsModal({
   socialMode,
   setSocialMode,
   selectedCategories,
+  selectedDateFilter,
+  setSelectedDateFilter,
+  selectedLocationFilter,
+  setSelectedLocationFilter,
+  locationOptions,
   dislikedEventIds,
   events,
   onRestoreCategory,
@@ -2982,6 +3206,11 @@ function SettingsModal({
   socialMode: SocialMode;
   setSocialMode: (mode: SocialMode) => void;
   selectedCategories: Set<ListFilterOption>;
+  selectedDateFilter: DateFilterOption;
+  setSelectedDateFilter: (value: DateFilterOption) => void;
+  selectedLocationFilter: string;
+  setSelectedLocationFilter: (value: string) => void;
+  locationOptions: string[];
   dislikedEventIds: string[];
   events: TAMUEvent[];
   onRestoreCategory: (category?: ExploreCategory) => void;
@@ -3107,6 +3336,73 @@ function SettingsModal({
             ) : null}
 
             <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary }]}>
+              Date window
+            </Text>
+            {DATE_FILTER_OPTIONS.map((option) => (
+              <Pressable
+                key={option}
+                style={stylesStatic.modalOption}
+                onPress={() => setSelectedDateFilter(option)}
+              >
+                <Text
+                  style={[
+                    stylesStatic.modalOptionText,
+                    { color: selectedDateFilter === option ? COLORS.primary : COLORS.textPrimary },
+                  ]}
+                >
+                  {option}
+                </Text>
+                {selectedDateFilter === option ? <Check size={16} color={COLORS.primary} /> : null}
+              </Pressable>
+            ))}
+
+            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary }]}>
+              Location
+            </Text>
+            {locationOptions.map((option) => (
+              <Pressable
+                key={option}
+                style={stylesStatic.modalOption}
+                onPress={() => setSelectedLocationFilter(option)}
+              >
+                <Text
+                  style={[
+                    stylesStatic.modalOptionText,
+                    { color: selectedLocationFilter === option ? COLORS.primary : COLORS.textPrimary },
+                  ]}
+                >
+                  {option}
+                </Text>
+                {selectedLocationFilter === option ? <Check size={16} color={COLORS.primary} /> : null}
+              </Pressable>
+            ))}
+
+            {selectedCategories.has('Social') ? (
+              <>
+                <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary }]}>
+                  Social mode
+                </Text>
+                {(['casual', 'professional'] as SocialMode[]).map((mode) => (
+                  <Pressable
+                    key={mode}
+                    style={stylesStatic.modalOption}
+                    onPress={() => setSocialMode(mode)}
+                  >
+                    <Text
+                      style={[
+                        stylesStatic.modalOptionText,
+                        { color: socialMode === mode ? COLORS.primary : COLORS.textPrimary },
+                      ]}
+                    >
+                      {mode === 'casual' ? 'Casual' : 'Professional'}
+                    </Text>
+                    {socialMode === mode ? <Check size={16} color={COLORS.primary} /> : null}
+                  </Pressable>
+                ))}
+              </>
+            ) : null}
+
+            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary }]}>
               Hidden events
             </Text>
             <Pressable style={stylesStatic.modalOption} onPress={() => onRestoreCategory()}>
@@ -3175,6 +3471,7 @@ function DetailModal({
   const isDark = theme === 'dark';
 
   if (!event) return null;
+  const contextLine = getEventContextLine(event);
 
   return (
     <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 100, elevation: 100, justifyContent: 'flex-end' }]} pointerEvents="box-none">
@@ -3221,7 +3518,7 @@ function DetailModal({
             <View style={stylesStatic.detailMetaRow}>
               <CalendarIcon size={15} color={COLORS.textSecondary} />
               <Text style={[stylesStatic.detailMetaText, { color: COLORS.textSecondary }]}>
-                {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
+                {joinMetaParts(formatDate(event.date_ts), formatTime(event.date_ts), getEventAreaLabel(event))}
               </Text>
             </View>
             {event.location ? (
@@ -3232,11 +3529,15 @@ function DetailModal({
                 </Text>
               </View>
             ) : null}
-            {event.group_title ? (
+            {contextLine ? (
               <View style={stylesStatic.detailMetaRow}>
-                <BadgeCheck size={15} color="#2F80ED" />
+                {event.is_admin_event ? (
+                  <BadgeCheck size={15} color="#2F80ED" />
+                ) : (
+                  <Megaphone size={15} color={COLORS.textSecondary} />
+                )}
                 <Text style={[stylesStatic.detailMetaText, { color: COLORS.textSecondary }]}>
-                  {event.group_title}
+                  {contextLine}
                 </Text>
               </View>
             ) : null}
@@ -3271,7 +3572,9 @@ function DetailModal({
               <Text style={stylesStatic.primaryDetailButtonText}>
                 {event.is_admin_event
                   ? (scheduled ? 'Remove RSVP' : 'RSVP to Featured Event')
-                  : (scheduled ? 'Remove from current schedule' : 'Add')}
+                  : event.is_promotion
+                    ? (scheduled ? 'Remove promotion reminder' : 'Save Promotion')
+                    : (scheduled ? 'Remove from current schedule' : 'Add')}
               </Text>
             </Pressable>
           </TourTarget>
@@ -3305,7 +3608,7 @@ function DetailModal({
               >
                 <Map size={18} color={COLORS.textPrimary} />
                 <Text style={[stylesStatic.secondaryDetailButtonText, { color: COLORS.textPrimary }]}>
-                  Places
+                  {event.is_off_campus ? 'Maps' : 'Places'}
                 </Text>
               </Pressable>
             ) : (

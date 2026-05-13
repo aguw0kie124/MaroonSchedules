@@ -348,10 +348,16 @@ export const fetchCampusOverview = async (clerkId: string) => {
     return requestJson(`/campus/overview?clerk_id=${encodeURIComponent(clerkId)}`);
 };
 
-export const fetchCampusEvents = async (clerkId?: string, limit = 8) => {
+export const fetchCampusEvents = async (
+    clerkId?: string,
+    limit = 8,
+    options: { category?: string; includeOffCampus?: boolean } = {},
+) => {
     const params = new URLSearchParams();
     params.set('limit', String(limit));
+    params.set('include_off_campus', String(options.includeOffCampus ?? true));
     if (clerkId) params.set('clerk_id', clerkId);
+    if (options.category) params.set('category', options.category);
     return requestJson(`/campus/events?${params.toString()}`);
 };
 

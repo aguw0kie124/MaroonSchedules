@@ -106,6 +106,7 @@ def get_events(
     category: Optional[str] = Query(None),
     student_relevant_only: bool = Query(True),
     campus: str = Query("tamu"),
+    include_off_campus: bool = Query(True),
     refresh: bool = Query(False),
     auth_user_id: Optional[str] = Depends(optional_auth),
 ) -> Dict[str, Any]:
@@ -118,8 +119,10 @@ def get_events(
     return campus_hub_service.get_events_snapshot(
         clerk_id,
         limit=limit,
+        category=category,
         student_relevant_only=student_relevant_only,
         campus=campus,
+        include_off_campus=include_off_campus,
         force_refresh=refresh,
     )
 

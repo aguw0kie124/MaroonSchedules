@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-export type NavItemId = 'Dashboard' | 'Places' | 'Social' | 'Dining';
+export type NavItemId = 'Dashboard' | 'Places' | 'Social' | 'Dining' | 'Grades';
 export type PlacesPillId =
   | 'Pulse'
   | 'Today'
@@ -38,7 +38,8 @@ export const DEFAULT_NAV_ITEMS: ToggleLayoutItem<NavItemId>[] = [
   { id: 'Dashboard', label: 'Events', visible: true, order: 0 },
   { id: 'Places', label: 'Places', visible: true, order: 1 },
   { id: 'Social', label: 'Social', visible: true, order: 2 },
-  { id: 'Dining', label: 'Dining', visible: false, order: 3 },
+  { id: 'Grades', label: 'Grades', visible: true, order: 3 },
+  { id: 'Dining', label: 'Dining', visible: false, order: 4 },
 ];
 
 export const DEFAULT_PLACES_PILLS: ToggleLayoutItem<PlacesPillId>[] = [
@@ -256,7 +257,7 @@ export const useAppShellStore = create<AppShellState>()(
     }),
     {
       name: 'app-shell-store',
-      version: 11,
+      version: 12,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         parkingPermit: state.parkingPermit,
@@ -418,6 +419,21 @@ export const useAppShellStore = create<AppShellState>()(
             wallpaperUri: _removedWallpaperUri,
             ...newState
           } = state;
+          return newState;
+        }
+        if (version < 12) {
+          const state = persistedState as Partial<AppShellState>;
+          const newState = { ...state };
+          // Ensure the new Grades nav item exists for users upgrading from older versions
+          if (Array.isArray(newState.navItems)) {
+            const hasGrades = newState.navItems.some((item: any) => item.id === 'Grades');
+            if (!hasGrades) {
+              newState.navItems = [
+                ...newState.navItems,
+                { id: 'Grades', label: 'Grades', visible: true, order: newState.navItems.length },
+              ];
+            }
+          }
           return newState;
         }
         return persistedState;

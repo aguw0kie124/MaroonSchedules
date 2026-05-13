@@ -74,7 +74,8 @@
           "icon": "./assets/adaptive-icon-v2.png",
           "color": "#500000"
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "runtimeVersion": {
       "policy": "appVersion"
