@@ -34,6 +34,7 @@ import { TransitTripResultsScreen } from './components/TransitTripResultsScreen'
 import { PlacesMapScreen } from './components/PlacesMapScreen';
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { CoursesNavigator } from './components/courses/CoursesNavigator';
 
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
@@ -52,7 +53,7 @@ import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 import RestaurantMenuScreen from './components/dining/RestaurantMenuScreen';
 
-import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio, UserRound, LayoutGrid, RotateCw, LibraryBig } from 'lucide-react-native';
+import { Home, Map, UtensilsCrossed, Radio, UserRound, BookOpen } from 'lucide-react-native';
 import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
@@ -265,6 +266,7 @@ function withTabMotion(Component: React.ComponentType<any>, delay = 0) {
 const AnimatedDashboardScreen = withTabMotion(Dashboard, 0);
 const AnimatedPlacesScreen = withTabMotion(PlacesMapScreen, 40);
 const AnimatedSocialScreen = withTabMotion(SocialHubScreen, 10);
+const AnimatedCoursesScreen = withTabMotion(CoursesNavigator, 20);
 const AnimatedDiningScreen = withTabMotion(DiningDashboard, 30);
 const AnimatedClubsScreen = withTabMotion(ClubAccessScreen, 50);
 const AnimatedSettingsScreen = withTabMotion(Profile, 90);
@@ -302,14 +304,23 @@ function MainTabs(props: any) {
           icon: Map,
         };
       }
-      if (item.id === 'Social') {
+      if (item.id === 'Courses') {
         return {
-          name: 'Social',
-          component: AnimatedSocialScreen,
-          title: 'Social',
-          icon: Radio,
+          name: 'Courses',
+          component: AnimatedCoursesScreen,
+          title: 'Courses',
+          icon: BookOpen,
         };
       }
+      // HIDDEN: Social tab replaced by Courses tab - re-enable when social is ready.
+      // if (item.id === 'Social') {
+      //   return {
+      //     name: 'Social',
+      //     component: AnimatedSocialScreen,
+      //     title: 'Social',
+      //     icon: Radio,
+      //   };
+      // }
       if (item.id === 'Dining') {
         return {
           name: 'Dining',
@@ -363,7 +374,6 @@ function MainTabs(props: any) {
           key={screen.name}
           name={screen.name}
           component={screen.component}
-          initialParams={screen.initialParams}
           options={{
             title: screen.title,
             tabBarButton: (p) => <TabButtonWrapper screenName={screen.name} props={p} />,

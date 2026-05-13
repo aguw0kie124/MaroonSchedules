@@ -21,6 +21,7 @@ from routers.admin import router as admin_router
 from routers.annex import router as annex_router
 from routers.campus_hub import router as campus_hub_router
 from routers.clubs import router as clubs_router
+from routers.courses import router as courses_router
 from routers.dining import router as dining_router
 from routers.grades import router as grades_router
 from routers.maps import router as maps_router
@@ -28,7 +29,7 @@ from routers.posts import router as posts_router
 from routers.traffic import router as traffic_router
 from routers.upload import UPLOAD_DIR
 from routers.upload import router as upload_router
-from services import cache_service, course_service, schedule_service, snapshot_jobs, user_service
+from services import cache_service, course_service, courses_service, schedule_service, snapshot_jobs, user_service
 
 # Same source of truth as Expo: repo-root .env, then optional Backend/.env for local-only keys.
 _BACKEND_DIR = Path(__file__).resolve().parent
@@ -70,6 +71,7 @@ def log_redis_status():
 @app.on_event("startup")
 async def start_background_snapshot_jobs():
     app.state.snapshot_job_tasks = await snapshot_jobs.start_snapshot_jobs()
+    await courses_service.ingest_course_data()
 
 
 @app.on_event("shutdown")
@@ -103,6 +105,7 @@ protected_router.include_router(dining_router)
 protected_router.include_router(grades_router)
 protected_router.include_router(upload_router)
 protected_router.include_router(admin_router)
+protected_router.include_router(courses_router, prefix="/courses")
 
 optional_protected_router.include_router(traffic_router, prefix="/traffic", tags=["Traffic"])
 optional_protected_router.include_router(campus_hub_router)

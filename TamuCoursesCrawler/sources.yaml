@@ -1,0 +1,65 @@
+sources:
+  - name: catalog_engineering
+    type: catalog_html
+    url: "https://catalog.tamu.edu/undergraduate/engineering/"
+    college: Engineering
+    priority: high
+
+  - name: catalog_science
+    type: catalog_html
+    url: "https://catalog.tamu.edu/undergraduate/science/"
+    college: Science
+    priority: high
+
+  - name: catalog_liberal_arts
+    type: catalog_html
+    url: "https://catalog.tamu.edu/undergraduate/liberal-arts/"
+    college: Liberal Arts
+    priority: medium
+
+  - name: catalog_business
+    type: catalog_html
+    url: "https://catalog.tamu.edu/undergraduate/mays-business/"
+    college: Business
+    priority: medium
+
+  - name: catalog_agriculture
+    type: catalog_html
+    url: "https://catalog.tamu.edu/undergraduate/agriculture-life-sciences/"
+    college: Agriculture & Life Sciences
+    priority: medium
+
+  - name: catalog_architecture
+    type: catalog_html
+    url: "https://catalog.tamu.edu/undergraduate/architecture/"
+    college: Architecture
+    priority: medium
+
+  - name: catalog_education
+    type: catalog_html
+    url: "https://catalog.tamu.edu/undergraduate/education-human-development/"
+    college: Education & Human Development
+    priority: medium
+
+  - name: catalog_geosciences
+    type: catalog_html
+    url: "https://catalog.tamu.edu/undergraduate/geosciences/"
+    college: Geosciences
+    priority: medium
+
+  - name: catalog_nursing
+    type: catalog_html
+    url: "https://catalog.tamu.edu/undergraduate/nursing/"
+    college: Nursing
+    priority: low
+
+  - name: catalog_performance_visual
+    type: catalog_html
+    url: "https://catalog.tamu.edu/undergraduate/performance-visual-fine-arts/"
+    college: Performance, Visualization & Fine Arts
+    priority: low
+
+  - name: annex_grades
+    type: annex_html
+    url: "https://anx.tamu.edu"
+    priority: high
