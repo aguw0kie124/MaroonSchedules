@@ -1830,14 +1830,6 @@ export function Profile() {
 
         {[
           {
-            key: 'grades',
-            title: 'Grades & Distributions',
-            icon: GraduationCap,
-            iconColor: '#10B981',
-            iconBg: '#10B98115',
-            action: () => navigation.navigate('GradesScreen'),
-          },
-          {
             key: 'annex',
             title: 'Library Services',
             icon: LibraryBig,

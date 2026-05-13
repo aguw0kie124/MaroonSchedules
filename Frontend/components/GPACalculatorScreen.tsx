@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,21 +10,63 @@ import {
 } from 'react-native';
 import { Trash2, PlusCircle, ArrowLeft } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from './SharedUI';
 
-// ─── Grade map ───────────────────────────────────────────────
-const GRADES = ['A', 'B+', 'B', 'C+', 'C', 'D+', 'D', 'F'] as const;
-type Grade = typeof GRADES[number];
+// ─── TAMU Grade Scale ────────────────────────────────────────
+// Grades that carry grade points and are included in GPA:
+const GPA_GRADES = ['A', 'B', 'C', 'D', 'F'] as const;
+// All grades including those excluded from GPA:
+const ALL_GRADES = ['A', 'B', 'C', 'D', 'F', 'S', 'U', 'I', 'Q', 'W', 'X', 'NG'] as const;
+type Grade = typeof ALL_GRADES[number];
 
+// Grade points per semester credit hour (TAMU official scale)
 const GRADE_POINTS: Record<Grade, number> = {
   A: 4.0,
-  'B+': 3.5,
   B: 3.0,
-  'C+': 2.5,
   C: 2.0,
-  'D+': 1.5,
   D: 1.0,
   F: 0.0,
+  S: 0.0,
+  U: 0.0,
+  I: 0.0,
+  Q: 0.0,
+  W: 0.0,
+  X: 0.0,
+  NG: 0.0,
+};
+
+// Whether hours are INCLUDED in GPA calculation
+// F and U: hours included (failing grades)
+// S, I, Q, W, X, NG: hours excluded
+const HOURS_IN_GPA: Record<Grade, boolean> = {
+  A: true,
+  B: true,
+  C: true,
+  D: true,
+  F: true,  // failing, hours included
+  S: false, // satisfactory (C or above), excluded
+  U: true,  // unsatisfactory (D or F), hours included as F
+  I: false, // incomplete, excluded
+  Q: false, // Q-drop, excluded
+  W: false, // withdrew, excluded
+  X: false, // no grade submitted, excluded
+  NG: false, // no grade, excluded
+};
+
+const GRADE_DESCRIPTIONS: Record<Grade, string> = {
+  A: 'Excellent',
+  B: 'Good',
+  C: 'Satisfactory',
+  D: 'Passing',
+  F: 'Failing',
+  S: 'Satisfactory (C or above)',
+  U: 'Unsatisfactory (D or F)',
+  I: 'Incomplete',
+  Q: 'Q-Drop',
+  W: 'Withdrew',
+  X: 'No grade submitted',
+  NG: 'No grade',
 };
 
 // ─── Types ───────────────────────────────────────────────────
@@ -39,8 +81,10 @@ const makeId = () => `course-${Date.now()}-${Math.random().toString(36).slice(2,
 
 const DEFAULT_COURSES: Course[] = [
   { id: makeId(), name: '', credits: '3', grade: 'A' },
-  { id: makeId(), name: '', credits: '3', grade: 'B+' },
+  { id: makeId(), name: '', credits: '3', grade: 'B' },
 ];
+
+const GPA_STORAGE_KEY = 'gpa-calculator-courses';
 
 // ─── GPA label colours ───────────────────────────────────────
 function gpaColor(gpa: number): string {
@@ -61,27 +105,59 @@ function gpaLabel(gpa: number): string {
 }
 
 // ─── Component ───────────────────────────────────────────────
-export function GPACalculatorScreen() {
+export function GPACalculatorScreen({ embedded = false }: { embedded?: boolean } = {}) {
     const { COLORS } = useTheme();
     const navigation = useNavigation();
     const styles = getStyles(COLORS);
   const [courses, setCourses] = useState<Course[]>(DEFAULT_COURSES);
+  const [loaded, setLoaded] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Derived GPA ──────────────────────────────────────────
-  const { gpa, totalCredits, totalPoints } = useMemo(() => {
+  // Load saved courses on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await AsyncStorage.getItem(GPA_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setCourses(parsed);
+          }
+        }
+      } catch {}
+      setLoaded(true);
+    })();
+  }, []);
+
+  // Save courses whenever they change (debounced)
+  useEffect(() => {
+    if (!loaded) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      AsyncStorage.setItem(GPA_STORAGE_KEY, JSON.stringify(courses)).catch(() => {});
+    }, 500);
+  }, [courses, loaded]);
+
+  // ── Derived GPA (TAMU rules) ──────────────────────────────
+  const { gpa, totalCredits, totalPoints, gpaCredits } = useMemo(() => {
     let pts = 0;
-    let hrs = 0;
+    let totalHrs = 0;
+    let gpaHrs = 0;
     for (const c of courses) {
       const cr = parseFloat(c.credits);
       if (!isNaN(cr) && cr > 0) {
-        pts += GRADE_POINTS[c.grade] * cr;
-        hrs += cr;
+        totalHrs += cr;
+        if (HOURS_IN_GPA[c.grade]) {
+          pts += GRADE_POINTS[c.grade] * cr;
+          gpaHrs += cr;
+        }
       }
     }
     return {
-      gpa: hrs > 0 ? pts / hrs : 0,
-      totalCredits: hrs,
+      gpa: gpaHrs > 0 ? pts / gpaHrs : 0,
+      totalCredits: totalHrs,
       totalPoints: pts,
+      gpaCredits: gpaHrs,
     };
   }, [courses]);
 
@@ -118,9 +194,11 @@ export function GPACalculatorScreen() {
         text: 'Reset',
         style: 'destructive',
         onPress: () => {
-          setCourses([
-            { id: makeId(), name: '', credits: '3', grade: 'A' },
-          ]);
+          const fresh = [
+            { id: makeId(), name: '', credits: '3', grade: 'A' as Grade },
+          ];
+          setCourses(fresh);
+          AsyncStorage.removeItem(GPA_STORAGE_KEY).catch(() => {});
         },
       },
     ]);
@@ -132,6 +210,7 @@ export function GPACalculatorScreen() {
   return (
     <View style={styles.container}>
       {/* ── Header ─────────────────────────────────────────── */}
+      {!embedded && (
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Pressable 
@@ -149,6 +228,14 @@ export function GPACalculatorScreen() {
           <Text style={styles.resetText}>Reset</Text>
         </Pressable>
       </View>
+      )}
+      {embedded && (
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+          <Pressable onPress={reset} style={[styles.resetBtn, { backgroundColor: 'rgba(255,69,58,0.12)' }]}>
+            <Text style={[styles.resetText, { color: '#FF453A' }]}>Reset</Text>
+          </Pressable>
+        </View>
+      )}
 
       <ScrollView
         style={styles.scroll}
@@ -166,18 +253,18 @@ export function GPACalculatorScreen() {
           <Text style={[styles.gpaLabel, { color }]}>{gpaLabel(gpaVal)}</Text>
           <View style={styles.statsRow}>
             <View style={styles.statBox}>
+              <Text style={styles.statValue}>{gpaCredits}</Text>
+              <Text style={styles.statLabel}>GPA Hrs</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statBox}>
               <Text style={styles.statValue}>{totalCredits}</Text>
-              <Text style={styles.statLabel}>Credit Hrs</Text>
+              <Text style={styles.statLabel}>Total Hrs</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statBox}>
               <Text style={styles.statValue}>{totalPoints.toFixed(1)}</Text>
               <Text style={styles.statLabel}>Quality Pts</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statBox}>
-              <Text style={styles.statValue}>{courses.length}</Text>
-              <Text style={styles.statLabel}>Courses</Text>
             </View>
           </View>
         </View>
@@ -238,14 +325,22 @@ export function GPACalculatorScreen() {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.gradePillRow}
                 >
-                  {GRADES.map(g => (
+                  {ALL_GRADES.map(g => (
                     <Pressable
                       key={g}
                       style={[
                         styles.gradePill,
                         course.grade === g && {
-                          backgroundColor: COLORS.primary,
-                          borderColor: COLORS.primary,
+                          backgroundColor: HOURS_IN_GPA[g] && GRADE_POINTS[g] > 0
+                            ? COLORS.primary
+                            : HOURS_IN_GPA[g]
+                              ? '#FF453A'
+                              : '#636366',
+                          borderColor: HOURS_IN_GPA[g] && GRADE_POINTS[g] > 0
+                            ? COLORS.primary
+                            : HOURS_IN_GPA[g]
+                              ? '#FF453A'
+                              : '#636366',
                         },
                       ]}
                       onPress={() => setGrade(course.id, g)}
@@ -266,12 +361,10 @@ export function GPACalculatorScreen() {
 
             {/* Grade point display */}
             <Text style={styles.gradePoints}>
-              {GRADE_POINTS[course.grade].toFixed(1)} pts ×{' '}
-              {parseFloat(course.credits) || 0} cr ={' '}
-              {(
-                GRADE_POINTS[course.grade] * (parseFloat(course.credits) || 0)
-              ).toFixed(1)}{' '}
-              quality pts
+              {HOURS_IN_GPA[course.grade]
+                ? `${GRADE_POINTS[course.grade].toFixed(1)} pts × ${parseFloat(course.credits) || 0} cr = ${(GRADE_POINTS[course.grade] * (parseFloat(course.credits) || 0)).toFixed(1)} quality pts`
+                : `${GRADE_DESCRIPTIONS[course.grade]} — excluded from GPA`
+              }
             </Text>
           </View>
         ))}
@@ -286,12 +379,20 @@ export function GPACalculatorScreen() {
         </Pressable>
 
         {/* ── Grade Legend ───────────────────────────────────── */}
-        <Text style={styles.sectionLabel}>GRADE SCALE</Text>
+        <Text style={styles.sectionLabel}>TAMU GRADE SCALE</Text>
         <View style={styles.legendCard}>
-          {GRADES.map(g => (
+          {ALL_GRADES.map(g => (
             <View key={g} style={styles.legendRow}>
               <Text style={styles.legendGrade}>{g}</Text>
-              <Text style={styles.legendPoints}>{GRADE_POINTS[g].toFixed(1)}</Text>
+              <Text style={[styles.legendDesc, { color: 'rgba(255,255,255,0.45)' }]}>
+                {GRADE_DESCRIPTIONS[g]}
+              </Text>
+              <Text style={[
+                styles.legendPoints,
+                !HOURS_IN_GPA[g] && { color: 'rgba(255,255,255,0.3)' },
+              ]}>
+                {HOURS_IN_GPA[g] ? `${GRADE_POINTS[g].toFixed(1)}` : '—'}
+              </Text>
             </View>
           ))}
         </View>
@@ -456,12 +557,13 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   },
   legendRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#1E1E1E',
   },
-  legendGrade: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
-  legendPoints: { fontSize: 14, fontWeight: '700', color: COLORS.primary },
+  legendGrade: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', width: 30 },
+  legendDesc: { fontSize: 12, fontWeight: '500', flex: 1, marginLeft: 8 },
+  legendPoints: { fontSize: 14, fontWeight: '700', color: COLORS.primary, width: 30, textAlign: 'right' },
 });
