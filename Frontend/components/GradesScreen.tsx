@@ -3,7 +3,7 @@
 //
 // Shows: subject + course# search → summary card → section list → detail modal
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
     View,
     Text,
@@ -18,7 +18,7 @@ import {
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
-import { BarChart2, X, ChevronRight, GraduationCap, Star, AlertCircle } from 'lucide-react-native';
+import { BarChart2, X, ChevronRight, GraduationCap, Star, AlertCircle, Search, ArrowUpDown } from 'lucide-react-native';
 
 import { useRoute } from '@react-navigation/native';
 import { useTheme } from './SharedUI';
@@ -37,6 +37,8 @@ import {
 // ──────────────────────────────────────────────────────────────
 
 type ScreenState = 'idle' | 'loading' | 'results' | 'error';
+type SortKey = 'gpa' | 'rating' | 'name';
+type SortDirection = 'asc' | 'desc';
 
 // ──────────────────────────────────────────────────────────────
 // Sub-components
@@ -214,13 +216,12 @@ function SectionCard({
             <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <Text style={styles.instructorName}>{item.instructor || 'STAFF'}</Text>
                             <RatingBadge
                                 rating={profRating?.overall_rating}
                                 reviews={profRating?.total_reviews}
                                 COLORS={COLORS}
-                                compact
                             />
                         </View>
                         <Text style={{ color: COLORS.textSecondary, fontSize: 13 }}>
@@ -328,9 +329,16 @@ function DetailModal({
                             <Text style={styles.modalTitle}>
                                 {subject.toUpperCase()} {courseNum} · Sec {item.section}
                             </Text>
-                            <Text style={{ color: COLORS.textSecondary, fontSize: 14 }}>
-                                {item.semester} {item.year} · Prof. {item.instructor}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
+                                <Text style={{ color: COLORS.textSecondary, fontSize: 14 }}>
+                                    {item.semester} {item.year} · Prof. {item.instructor}
+                                </Text>
+                                <RatingBadge
+                                    rating={profRating?.overall_rating}
+                                    reviews={profRating?.total_reviews}
+                                    COLORS={COLORS}
+                                />
+                            </View>
                         </View>
                         <Pressable onPress={onClose} style={styles.closeBtn}>
                             <X size={20} color={COLORS.textSecondary} />
@@ -603,6 +611,67 @@ export function GradesScreen() {
     const [profRatings, setProfRatings] = useState<Record<string, { overall_rating?: number; total_reviews?: number }>>({});
     const [restoredFromStorage, setRestoredFromStorage] = useState(false);
 
+    // ── Filter / sort state ──
+    const [nameFilter, setNameFilter] = useState('');
+    const [sortKey, setSortKey] = useState<SortKey>('gpa');
+    const [sortDir, setSortDir] = useState<SortDirection>('desc');
+
+    // Helper: look up professor rating for an instructor name
+    const findProfRating = useCallback((instrName: string) => {
+        const key = (instrName || '').toUpperCase().trim();
+        if (!key || key === 'STAFF') return undefined;
+        // Direct match
+        if (profRatings[key]) return profRatings[key];
+        // Extract last name (first word, splitting on comma or space)
+        const lastName = key.split(/[,\s]/)[0]?.trim();
+        if (!lastName || lastName.length < 2) return undefined;
+        // Match by last name against all known professors
+        return Object.entries(profRatings).find(([name]) => {
+            const otherLastName = name.split(/[,\s]/)[0]?.trim();
+            return lastName === otherLastName;
+        })?.[1];
+    }, [profRatings]);
+
+    // Derived: filtered + sorted sections
+    const filteredSections = useMemo(() => {
+        if (!result?.sections) return [];
+        let sections = [...result.sections];
+
+        // Name filter
+        if (nameFilter.trim()) {
+            const q = nameFilter.trim().toUpperCase();
+            sections = sections.filter(s =>
+                (s.instructor || '').toUpperCase().includes(q)
+            );
+        }
+
+        // Sort
+        const dir = sortDir === 'asc' ? 1 : -1;
+        sections.sort((a, b) => {
+            if (sortKey === 'gpa') {
+                return (a.avgGpa - b.avgGpa) * dir;
+            }
+            if (sortKey === 'rating') {
+                const rA = findProfRating(a.instructor)?.overall_rating || 0;
+                const rB = findProfRating(b.instructor)?.overall_rating || 0;
+                return (rA - rB) * dir;
+            }
+            // name
+            return (a.instructor || '').localeCompare(b.instructor || '') * dir;
+        });
+
+        return sections;
+    }, [result?.sections, nameFilter, sortKey, sortDir, findProfRating]);
+
+    const toggleSort = useCallback((key: SortKey) => {
+        if (sortKey === key) {
+            setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortKey(key);
+            setSortDir(key === 'name' ? 'asc' : 'desc');
+        }
+    }, [sortKey]);
+
     // Restore last search from storage on mount
     useEffect(() => {
         if (initialSubject && initialCourseNum) {
@@ -667,18 +736,54 @@ export function GradesScreen() {
                     }
                 }
                 setProfRatings(ratings);
+
+                // Also fetch ratings for unique instructors from grade data
+                // that weren't found in the course catalog
+                if (data.sections?.length) {
+                    const uniqueInstructors = [...new Set(
+                        data.sections
+                            .map((s: any) => s.instructor)
+                            .filter((n: string) => n && n !== 'STAFF')
+                    )];
+                    // Check which ones we don't have ratings for yet
+                    const missing = uniqueInstructors.filter((name: string) => {
+                        const key = name.toUpperCase().trim();
+                        if (ratings[key]) return false;
+                        const lastName = key.split(/[,\s]/)[0]?.trim();
+                        if (!lastName || lastName.length < 2) return false;
+                        return !Object.keys(ratings).some(k =>
+                            k.split(/[,\s]/)[0]?.trim() === lastName
+                        );
+                    });
+                    // Batch fetch (limit to first 15 unique profs to avoid API spam)
+                    const toFetch = missing.slice(0, 15);
+                    if (toFetch.length > 0) {
+                        const fetched: Record<string, { overall_rating?: number; total_reviews?: number }> = {};
+                        await Promise.allSettled(
+                            toFetch.map(async (instrName: string) => {
+                                try {
+                                    const searchName = instrName.split(',')[0]?.trim() || instrName.split(/\s/)[0]?.trim() || instrName;
+                                    const profData = await requestJson(`/professors/search?name=${encodeURIComponent(searchName)}`);
+                                    if (profData?.overall_rating && profData.overall_rating > 0) {
+                                        fetched[instrName.toUpperCase().trim()] = {
+                                            overall_rating: profData.overall_rating,
+                                            total_reviews: profData.total_reviews,
+                                        };
+                                    }
+                                } catch {}
+                            })
+                        );
+                        if (Object.keys(fetched).length > 0) {
+                            setProfRatings(prev => ({ ...prev, ...fetched }));
+                        }
+                    }
+                }
             } catch {
                 // Course info is supplementary — don't block grade results
                 setCourseInfo(null);
             }
         } catch (err: any) {
-            const raw = err?.message ?? 'Unknown error';
-            const isJsonParseNoise =
-                typeof raw === 'string' &&
-                (raw.includes('Expecting value:') ||
-                    raw.includes('Expected value:') ||
-                    /parse response as JSON/i.test(raw));
-            setErrorMsg(isJsonParseNoise ? 'Sorry, class not found' : raw);
+            setErrorMsg('Sorry, class not found!');
             setScreenState('error');
         }
     };
@@ -786,19 +891,66 @@ export function GradesScreen() {
                                             prerequisites={courseInfo?.prerequisites || ''}
                                             COLORS={COLORS}
                                         />
+
+                                        {/* ── Filter / Sort toolbar ── */}
+                                        <View style={styles.filterBar}>
+                                            {/* Search by professor name */}
+                                            <View style={styles.nameSearchWrap}>
+                                                <Search size={14} color={COLORS.textTertiary} />
+                                                <TextInput
+                                                    style={styles.nameSearchInput}
+                                                    placeholder="Search professor…"
+                                                    placeholderTextColor={COLORS.textTertiary}
+                                                    value={nameFilter}
+                                                    onChangeText={setNameFilter}
+                                                    autoCapitalize="none"
+                                                    autoCorrect={false}
+                                                />
+                                                {nameFilter.length > 0 && (
+                                                    <Pressable onPress={() => setNameFilter('')} hitSlop={8}>
+                                                        <X size={14} color={COLORS.textTertiary} />
+                                                    </Pressable>
+                                                )}
+                                            </View>
+
+                                            {/* Sort pills */}
+                                            <View style={styles.sortRow}>
+                                                {([['gpa', 'GPA'], ['rating', 'Rating'], ['name', 'Name']] as [SortKey, string][]).map(([key, label]) => {
+                                                    const isActive = sortKey === key;
+                                                    return (
+                                                        <Pressable
+                                                            key={key}
+                                                            onPress={() => toggleSort(key)}
+                                                            style={[styles.sortPill, isActive && { backgroundColor: COLORS.primary + '18', borderColor: COLORS.primary + '40' }]}
+                                                        >
+                                                            <Text style={[styles.sortPillText, isActive && { color: COLORS.primary, fontWeight: '700' }]}>
+                                                                {label}
+                                                            </Text>
+                                                            {isActive && (
+                                                                <ArrowUpDown size={11} color={COLORS.primary} />
+                                                            )}
+                                                            {isActive && (
+                                                                <Text style={{ fontSize: 9, color: COLORS.primary, fontWeight: '600' }}>
+                                                                    {sortDir === 'asc' ? '↑' : '↓'}
+                                                                </Text>
+                                                            )}
+                                                        </Pressable>
+                                                    );
+                                                })}
+                                            </View>
+
+                                            {nameFilter.trim() !== '' && (
+                                                <Text style={{ fontSize: 11, color: COLORS.textTertiary, marginTop: 4 }}>
+                                                    {filteredSections.length} section{filteredSections.length !== 1 ? 's' : ''} found
+                                                </Text>
+                                            )}
+                                        </View>
                                     </>
                                 }
-                                data={result.sections}
+                                data={filteredSections}
                                 keyExtractor={(item, idx) => `${item.term_code}_${item.section}_${item.instructor}_${idx}`}
                                 renderItem={({ item }) => {
-                                    // Find professor rating by matching instructor name
-                                    const instrName = (item.instructor || '').toUpperCase().trim();
-                                    const profRating = profRatings[instrName] ||
-                                        Object.entries(profRatings).find(([name]) => {
-                                            // Fuzzy match: grade data has "DOE, J" and API has "Doe, John"
-                                            const lastName = instrName.split(',')[0]?.trim();
-                                            return lastName && name.includes(lastName);
-                                        })?.[1];
+                                    const profRating = findProfRating(item.instructor);
                                     return (
                                         <SectionCard
                                             item={item}
@@ -823,13 +975,7 @@ export function GradesScreen() {
                 item={selectedSection}
                 subject={searchedSubject}
                 courseNum={searchedCourseNum}
-                profRating={selectedSection ? (
-                    profRatings[(selectedSection.instructor || '').toUpperCase().trim()] ||
-                    Object.entries(profRatings).find(([name]) => {
-                        const lastName = (selectedSection.instructor || '').toUpperCase().split(',')[0]?.trim();
-                        return lastName && name.includes(lastName);
-                    })?.[1]
-                ) : undefined}
+                profRating={selectedSection ? findProfRating(selectedSection.instructor) : undefined}
                 onClose={() => setSelectedSection(null)}
                 COLORS={COLORS}
                 styles={styles}
@@ -1009,5 +1155,49 @@ const getStyles = (COLORS: any) =>
             backgroundColor: COLORS.border,
             alignItems: 'center',
             justifyContent: 'center',
+        },
+        // Filter / sort toolbar
+        filterBar: {
+            paddingHorizontal: 16,
+            paddingTop: 4,
+            paddingBottom: 10,
+        },
+        nameSearchWrap: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: COLORS.surface,
+            borderWidth: 1,
+            borderColor: COLORS.border,
+            borderRadius: 10,
+            paddingHorizontal: 10,
+            height: 36,
+            gap: 6,
+            marginBottom: 8,
+        },
+        nameSearchInput: {
+            flex: 1,
+            fontSize: 13,
+            color: COLORS.textPrimary,
+            paddingVertical: 0,
+        },
+        sortRow: {
+            flexDirection: 'row',
+            gap: 6,
+        },
+        sortPill: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 8,
+            backgroundColor: COLORS.surface,
+            borderWidth: 1,
+            borderColor: COLORS.border,
+        },
+        sortPillText: {
+            fontSize: 12,
+            fontWeight: '600',
+            color: COLORS.textSecondary,
         },
     });

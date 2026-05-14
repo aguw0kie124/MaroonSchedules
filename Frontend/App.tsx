@@ -37,8 +37,6 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
-import { GradesTabScreen } from './components/GradesTabScreen';
-import { GPACalculatorScreen } from './components/GPACalculatorScreen';
 import { TimerScreen } from './components/TimerScreen';
 
 import DiningDashboard from './components/dining/DiningDashboard';
@@ -269,7 +267,7 @@ const AnimatedSocialScreen = withTabMotion(SocialHubScreen, 10);
 const AnimatedDiningScreen = withTabMotion(DiningDashboard, 30);
 const AnimatedClubsScreen = withTabMotion(ClubAccessScreen, 50);
 const AnimatedSettingsScreen = withTabMotion(Profile, 90);
-const AnimatedGradesTabScreen = withTabMotion(GradesTabScreen, 60);
+const AnimatedGradesTabScreen = withTabMotion(GradesScreen, 60);
 
 function MainTabs(props: any) {
   const { COLORS } = useTheme();
@@ -558,7 +556,7 @@ function RootNavigator() {
             <Stack.Screen name="ClubAccess" component={ClubAccessScreen} options={{ headerShown: true, title: 'Club Access' }} />
             <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
+
             <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="FacilityCounts" component={FacilityCountsScreen} options={{ headerShown: false }} />
             <Stack.Screen
