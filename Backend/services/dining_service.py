@@ -533,12 +533,14 @@ def _normalize_menu_date_key(date_str: Optional[str] = None) -> str:
     return datetime.now(tz=CENTRAL_TZ).strftime('%Y-%m-%d')
 
 
-def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str = None) -> Dict[str, Any]:
+def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str = None, force_refresh: bool = False) -> Dict[str, Any]:
     normalized_date = _normalize_menu_date_key(date_str)
-    cache_key = f"dining:full-menu:v2:{location_name.lower()}:{(meal_period or 'lunch').lower()}:{normalized_date}"
-    cached = cache_service.get_json(cache_key)
+    cache_key = f"dining:full-menu:v3:{location_name.lower()}:{(meal_period or 'lunch').lower()}:{normalized_date}"
+    cached = None if force_refresh else cache_service.get_json(cache_key)
     if cached is not None:
-        return cached
+        cached_count = sum(len(category.get("items") or []) for category in cached.get("categories") or [])
+        if cached_count > 0 or not ("hall" in (resolve_location_name(location_name) or location_name).lower()):
+            return cached
 
     period = (meal_period or 'lunch').lower()
     resolved_name = resolve_location_name(location_name) or location_name
@@ -548,7 +550,12 @@ def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str 
     resolved_locations = [resolved_name]
 
     if is_dining_hall:
-        live_result = fetch_dine_on_campus_menu(resolved_name, date_str=normalized_date, meal_period=period)
+        live_result = fetch_dine_on_campus_menu(
+            resolved_name,
+            date_str=normalized_date,
+            meal_period=period,
+            force_refresh=force_refresh,
+        )
         if live_result.get('success') and live_result.get('items'):
             items = live_result['items']
             source = 'live'
@@ -687,11 +694,12 @@ def _dine_api_get(path: str, *, timeout: int = 10, params: Optional[Dict[str, An
     raise requests.RequestException(last_error or "Unable to reach DineOnCampus")
 
 
-def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_period: str = None) -> Dict[str, Any]:
-    cache_key = f"dining:live-menu:v1:{location_name.lower()}:{(meal_period or 'lunch').lower()}:{date_str or datetime.now().strftime('%Y-%m-%d')}"
-    cached = cache_service.get_json(cache_key)
+def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_period: str = None, force_refresh: bool = False) -> Dict[str, Any]:
+    cache_key = f"dining:live-menu:v2:{location_name.lower()}:{(meal_period or 'lunch').lower()}:{date_str or datetime.now().strftime('%Y-%m-%d')}"
+    cached = None if force_refresh else cache_service.get_json(cache_key)
     if cached is not None:
-        return cached
+        if len(cached.get("items") or []) > 0:
+            return cached
 
     if not date_str:
         date_str = datetime.now().strftime('%Y-%m-%d')
@@ -768,7 +776,7 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
 
         items = enrich_items(items)
         payload = {
-            "success": True,
+            "success": len(items) > 0,
             "items": items,
             "location": location_name,
             "date": date_str,
@@ -776,7 +784,11 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
             "resolvedPeriod": resolved_period,
             "apiBase": menu_url.rsplit('/locations/', 1)[0],
         }
-        cache_service.set_json(cache_key, payload, _menu_success_ttl_seconds(date_str))
+        cache_service.set_json(
+            cache_key,
+            payload,
+            _menu_success_ttl_seconds(date_str) if items else DINING_MENU_ERROR_TTL_SECONDS,
+        )
         return payload
     except Exception as e:
         last_error = str(e)

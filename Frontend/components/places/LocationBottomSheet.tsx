@@ -245,6 +245,8 @@ interface LocationBottomSheetProps {
   activeDiningDate: string;
   setActiveDiningDate: (v: string) => void;
   diningMenuPreview: any | null;
+  diningMenuError?: string | null;
+  retryDiningMenu?: () => void;
   isFetchingDining: boolean;
   isPrimaryDiningHallSelection: boolean;
   openFullMenu: (locationName: string, mealPeriod?: DiningMealPeriod) => void;
@@ -287,6 +289,8 @@ export function LocationBottomSheet({
   activeDiningDate,
   setActiveDiningDate,
   diningMenuPreview,
+  diningMenuError,
+  retryDiningMenu,
   isFetchingDining,
   isPrimaryDiningHallSelection,
   openFullMenu,
@@ -376,6 +380,30 @@ export function LocationBottomSheet({
       diningCollapseTimersRef.current.delete(categoryName);
     }
   }, []);
+
+  const resetDiningStationFilter = useCallback(
+    (options?: { animate?: boolean }) => {
+      if (options?.animate) {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      }
+
+      setActiveCategoryKey("all");
+      setClosingDiningCategories(new Set());
+
+      const categoryNames = diningMenuPreview?.categories?.map((c: any) => c.name) || [];
+      categoryNames.forEach((name: string) => {
+        const value = getDiningChevronAnim(name, false);
+        value.setValue(0);
+      });
+      setCollapsedCategories(new Set(categoryNames));
+    },
+    [diningMenuPreview?.categories, getDiningChevronAnim],
+  );
+
+  useEffect(() => {
+    // Ensure day/meal switches always return to the "All stations" view.
+    resetDiningStationFilter();
+  }, [activeDiningDate, activeDiningMealPeriod, resetDiningStationFilter]);
 
   const loadReminderIds = useCallback(async () => {
     const reminderIds = await getDiningReminderIds();
@@ -1813,14 +1841,7 @@ export function LocationBottomSheet({
                         },
                       ]}
                       onPress={() => {
-                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                        setActiveCategoryKey("all");
-                        const categoryNames = diningMenuPreview.categories.map((c: any) => c.name);
-                        categoryNames.forEach((name: string) => {
-                          const value = getDiningChevronAnim(name, false);
-                          value.setValue(0);
-                        });
-                        setCollapsedCategories(new Set(categoryNames));
+                        resetDiningStationFilter({ animate: true });
                       }}
                       activeOpacity={0.8}
                     >
@@ -1879,6 +1900,34 @@ export function LocationBottomSheet({
                 {isDiningSearchOpen ? null : isFetchingDining ? (
                   <View style={{ paddingTop: 40, alignItems: "center" }}>
                     <ActivityIndicator color={COLORS.primary} size="large" />
+                  </View>
+                ) : diningMenuError ? (
+                  <View style={{ paddingVertical: 40, alignItems: "center", paddingHorizontal: 24 }}>
+                    <Utensils size={32} color={COLORS.textTertiary} style={{ marginBottom: 12, opacity: 0.5 }} />
+                    <Text style={{ fontSize: 16, fontWeight: "700", color: COLORS.textSecondary, textAlign: "center" }}>
+                      Could not load this menu
+                    </Text>
+                    <Text style={{ fontSize: 12, color: COLORS.textTertiary, marginTop: 8, textAlign: "center" }}>
+                      {__DEV__ ? diningMenuError : "Please try again."}
+                    </Text>
+                    {retryDiningMenu ? (
+                      <TouchableOpacity
+                        onPress={retryDiningMenu}
+                        style={{
+                          marginTop: 16,
+                          paddingHorizontal: 16,
+                          paddingVertical: 10,
+                          borderRadius: 999,
+                          backgroundColor: COLORS.card,
+                          borderWidth: 1,
+                          borderColor: COLORS.border,
+                        }}
+                      >
+                        <Text style={{ color: COLORS.textPrimary, fontSize: 13, fontWeight: "800" }}>
+                          Retry
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 ) : !diningMenuPreview?.categories || diningMenuPreview.categories.length === 0 ? (
                   <View style={{ paddingVertical: 40, alignItems: "center" }}>
@@ -2048,6 +2097,12 @@ export function LocationBottomSheet({
                                               gap: 6,
                                               marginLeft: 2,
                                             }}>
+                                              {(() => {
+                                                const trackerKey = String(item?.name || "").trim();
+                                                const trackerCount = trackerCounts[trackerKey]?.count || 0;
+
+                                                return (
+                                                  <>
                                               <TouchableOpacity
                                                 onPress={() => toggleMenuReminder(item, category.name)}
                                                 disabled={isReminderSyncing}
@@ -2072,14 +2127,14 @@ export function LocationBottomSheet({
                                               </TouchableOpacity>
 
                                               <View style={{ minWidth: 26, alignItems: 'flex-end', justifyContent: 'center' }}>
-                                                {(trackerCounts[item.name]?.count || 0) > 0 && (
+                                                {trackerCount > 0 && (
                                                   <Text style={{ fontSize: 12, fontWeight: "800", color: COLORS.textSecondary }}>
-                                                    {trackerCounts[item.name].count}x
+                                                    {trackerCount}x
                                                   </Text>
                                                 )}
                                               </View>
 
-                                              {(trackerCounts[item.name]?.count || 0) > 0 && (
+                                              {trackerCount > 0 && (
                                                 <TouchableOpacity
                                                   onPress={() => onRemoveMeal(item)}
                                                   disabled={isSyncingTracker}
@@ -2120,6 +2175,9 @@ export function LocationBottomSheet({
                                                   <Text style={{ fontSize: 20, fontWeight: "900", color: "#5B9A68", lineHeight: 22 }}>+</Text>
                                                 )}
                                               </TouchableOpacity>
+                                                  </>
+                                                );
+                                              })()}
                                             </View>
                                           ) : (
                                             <TouchableOpacity

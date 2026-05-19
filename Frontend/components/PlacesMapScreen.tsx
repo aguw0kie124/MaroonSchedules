@@ -847,6 +847,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
     activeDiningDate,
     setActiveDiningDate,
     diningMenuPreview,
+    diningMenuError,
+    retryDiningMenu,
     isPrimaryDiningHallSelection,
     handleSelectLocation,
   } = usePlacesSelection({
@@ -1308,8 +1310,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
       const tracker = await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}?date=${encodeURIComponent(getLocalDateString())}`);
       const entries = Array.isArray(tracker?.entries) ? tracker.entries : [];
       const nextCounts = entries.reduce((acc: Record<string, { count: number; entryIds: number[] }>, entry: any) => {
-        if (entry.meal_period !== mealPeriod) return acc;
-        const key = entry.label;
+        const entryPeriod = String(entry.meal_period || '').toLowerCase();
+        if (entryPeriod !== String(mealPeriod).toLowerCase()) return acc;
+        const key = String(entry.label || '').trim();
+        if (!key) return acc;
         const existing = acc[key] || { count: 0, entryIds: [] };
         existing.count += 1;
         existing.entryIds.push(entry.id);
@@ -1329,14 +1333,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
     }
     setIsSyncingTracker(true);
     try {
+      const label = String(item?.name || '').trim();
       await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}`, {
         method: 'POST',
         body: JSON.stringify({
           date: getLocalDateString(),
           meal_period: mealPeriod,
-          label: item.name,
+          label,
           foods: [{
-            name: item.name,
+            name: label,
             source: 'dining_menu',
             calories: Number(item.calories || 0),
             protein: Number(item.protein || 0),
@@ -1352,6 +1357,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       await refreshTrackerCounts(location, mealPeriod);
     } catch (e) {
       console.warn('Meal add failed', e);
+      Alert.alert('Error', 'Could not add this item to your tracker right now.');
     } finally {
       setIsSyncingTracker(false);
     }
@@ -1359,7 +1365,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   const removeMealEntry = useCallback(async (item: any, location: string, mealPeriod: DiningMealPeriod) => {
     if (!user) return;
-    const existing = trackerCounts[item.name];
+    const key = String(item?.name || '').trim();
+    const existing = trackerCounts[key];
     if (!existing || existing.entryIds.length === 0) return;
 
     setIsSyncingTracker(true);
@@ -1372,6 +1379,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       await refreshTrackerCounts(location, mealPeriod);
     } catch (e) {
       console.warn('Meal remove failed', e);
+      Alert.alert('Error', 'Could not remove this item from your tracker right now.');
     } finally {
       setIsSyncingTracker(false);
     }
@@ -2664,6 +2672,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
         activeDiningDate={activeDiningDate}
         setActiveDiningDate={setActiveDiningDate}
         diningMenuPreview={diningMenuPreview}
+        diningMenuError={diningMenuError}
+        retryDiningMenu={retryDiningMenu}
         isFetchingDining={isFetchingDining}
         isPrimaryDiningHallSelection={isPrimaryDiningHallSelection}
         openFullMenu={openFullMenu}

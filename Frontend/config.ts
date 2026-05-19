@@ -36,10 +36,23 @@ function getMetroHost(): string | null {
 
 function resolveApiUrl() {
     const configuredUrl = (process.env.EXPO_PUBLIC_API_URL || '').trim();
-    const fallbackUrl = configuredUrl || DEFAULT_LOCAL_API_URL;
 
     if (!__DEV__) {
-        return fallbackUrl;
+        return configuredUrl || DEFAULT_LOCAL_API_URL;
+    }
+
+    const useRemoteApiInDev = process.env.EXPO_PUBLIC_USE_REMOTE_API_IN_DEV === 'true';
+    let fallbackUrl = configuredUrl || DEFAULT_LOCAL_API_URL;
+
+    if (configuredUrl && !useRemoteApiInDev) {
+        try {
+            const configuredHost = new URL(configuredUrl).hostname;
+            if (!LOOPBACK_HOSTS.has(configuredHost) && !isPrivateIpv4(configuredHost)) {
+                fallbackUrl = DEFAULT_LOCAL_API_URL;
+            }
+        } catch {
+            fallbackUrl = DEFAULT_LOCAL_API_URL;
+        }
     }
 
     const metroHost = getMetroHost();

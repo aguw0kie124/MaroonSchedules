@@ -7,7 +7,7 @@ import {
   shiftLocalDateString,
 } from './dateUtils';
 
-const CACHE_PREFIX = 'dining-menu-cache-v4';
+const CACHE_PREFIX = 'dining-menu-cache-v5';
 const LAST_PRUNE_KEY = `${CACHE_PREFIX}:last-pruned`;
 const MAX_PAST_CACHE_DAYS = 14;
 const MAX_FUTURE_CACHE_DAYS = 120;
@@ -509,9 +509,9 @@ export async function fetchDiningFullMenuCached({
         const cachedItemCount = getMenuItemCount(parsed?.data);
         const staleDiningHallPayload =
           isDiningHallMenuLocation(resolvedLocation) &&
-          cachedItemCount > 0 &&
-          cachedItemCount <= 2 &&
-          diffCalendarDays(getLocalDateString(), dateKey) === 0;
+          (cachedItemCount === 0 ||
+            (cachedItemCount <= 2 &&
+              diffCalendarDays(getLocalDateString(), dateKey) === 0));
 
         if (parsed?.data && !staleDiningHallPayload) {
           return {
@@ -529,9 +529,15 @@ export async function fetchDiningFullMenuCached({
       meal_period: normalizedMealPeriod,
       date: dateKey,
     });
+    if (forceRefresh) {
+      params.set('force_refresh', 'true');
+    }
     const data = await requestJson(`/dining/full-menu?${params.toString()}`);
 
-    const shouldPersist = typeof data?.success === 'boolean';
+    const itemCount = getMenuItemCount(data);
+    const shouldPersist =
+      typeof data?.success === 'boolean' &&
+      (!isDiningHallMenuLocation(resolvedLocation) || itemCount > 0);
 
     if (shouldPersist) {
       const payload: CachedMenuPayload = {

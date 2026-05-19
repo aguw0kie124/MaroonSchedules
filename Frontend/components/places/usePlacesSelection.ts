@@ -3,6 +3,7 @@ import { fetchCampusPlaceDetail } from "../../api/client";
 import {
   fetchDiningFullMenuCached,
   getDiningContextDate,
+  getDiningMealOptionsForLocation,
   getDiningMealPeriodForLocation,
   getDiningMenuCandidates,
   isDiningHallMenuLocation,
@@ -102,6 +103,8 @@ export function usePlacesSelection({
     useState<DiningMealPeriod>(() => getDiningMealPeriodForLocation(null));
   const [activeDiningDate, setActiveDiningDate] = useState<string>(getLocalDateString());
   const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
+  const [diningMenuError, setDiningMenuError] = useState<string | null>(null);
+  const [diningMenuRequestNonce, setDiningMenuRequestNonce] = useState(0);
   const [selectedPlaceDetail, setSelectedPlaceDetail] = useState<any | null>(null);
   const [isFetchingDetail, setIsFetchingDetail] = useState(false);
 
@@ -132,16 +135,65 @@ export function usePlacesSelection({
     setActiveDiningMealPeriod(getDiningMealPeriodForLocation(null) as DiningMealPeriod);
     setActiveDiningDate(getLocalDateString());
     setDiningMenuPreview(null);
+    setDiningMenuError(null);
   }, []);
 
   const loadBestDiningPreview = useCallback(
     async (locationName: string, preferredMeal: DiningMealPeriod, dateKey: string) => {
-      const preview = await fetchDiningFullMenuCached({
-        location: locationName,
-        mealPeriod: preferredMeal,
-        date: dateKey,
-      }).catch(() => null);
-      return { preview, meal: preferredMeal, dateKey };
+      const contextDate = getDiningContextDate(dateKey);
+      const options = getDiningMealOptionsForLocation(locationName, contextDate);
+      const orderedMeals: DiningMealPeriod[] = [
+        preferredMeal,
+        ...options.filter((meal) => meal !== preferredMeal),
+      ];
+
+      let lastPreview: any | null = null;
+      let lastError: unknown = null;
+      for (const meal of orderedMeals) {
+        let preview = null;
+        try {
+          preview = await fetchDiningFullMenuCached({
+            location: locationName,
+            mealPeriod: meal,
+            date: dateKey,
+          });
+        } catch (error) {
+          lastError = error;
+        }
+
+        const itemCount = (preview?.categories || []).reduce(
+          (sum: number, category: any) => sum + (Array.isArray(category?.items) ? category.items.length : 0),
+          0,
+        );
+        if (isDiningHallMenuLocation(locationName) && itemCount === 0) {
+          try {
+            preview = await fetchDiningFullMenuCached({
+              location: locationName,
+              mealPeriod: meal,
+              date: dateKey,
+              forceRefresh: true,
+            });
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        lastPreview = preview;
+
+        const categories = Array.isArray(preview?.categories) ? preview.categories : [];
+        if (categories.length > 0) {
+          return { preview, meal, dateKey };
+        }
+        if (preview?.success === false) {
+          lastError = new Error(preview?.message || `No menu items returned for ${locationName} ${meal} on ${dateKey}`);
+        }
+      }
+
+      const lastCategories = Array.isArray(lastPreview?.categories) ? lastPreview.categories : [];
+      if (lastCategories.length === 0 && lastError) {
+        throw lastError;
+      }
+
+      return { preview: lastPreview, meal: preferredMeal, dateKey };
     },
     [],
   );
@@ -191,8 +243,10 @@ export function usePlacesSelection({
           getDiningMealPeriodForLocation(loc.location, getDiningContextDate(todayKey)) as DiningMealPeriod,
         );
         setDiningMenuPreview(null);
+        setDiningMenuError(null);
       } catch (error) {
         console.warn("Failed to fetch dining data", error);
+        setDiningMenuError(error instanceof Error ? error.message : String(error));
       } finally {
         setIsFetchingDining(false);
       }
@@ -272,6 +326,7 @@ export function usePlacesSelection({
 
     let cancelled = false;
     setIsFetchingDining(true);
+    setDiningMenuError(null);
     loadBestDiningPreview(activeDiningMenu, activeDiningMealPeriod, activeDiningDate)
       .then(({ preview, meal }) => {
         if (!cancelled) {
@@ -279,7 +334,14 @@ export function usePlacesSelection({
           setDiningMenuPreview(preview);
         }
       })
-      .catch((error) => console.warn("Failed to load dining menu preview", error))
+      .catch((error) => {
+        if (!cancelled) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.warn("Failed to load dining menu preview", error);
+          setDiningMenuError(message);
+          setDiningMenuPreview(null);
+        }
+      })
       .finally(() => {
         if (!cancelled) setIsFetchingDining(false);
       });
@@ -287,7 +349,7 @@ export function usePlacesSelection({
     return () => {
       cancelled = true;
     };
-  }, [activeDiningDate, activeDiningMealPeriod, activeDiningMenu, loadBestDiningPreview]);
+  }, [activeDiningDate, activeDiningMealPeriod, activeDiningMenu, diningMenuRequestNonce, loadBestDiningPreview]);
 
   useEffect(() => {
     if (!activeDiningMenu) return;
@@ -327,6 +389,8 @@ export function usePlacesSelection({
     activeDiningDate,
     setActiveDiningDate,
     diningMenuPreview,
+    diningMenuError,
+    retryDiningMenu: () => setDiningMenuRequestNonce((current) => current + 1),
     isPrimaryDiningHallSelection,
     handleSelectLocation,
   };

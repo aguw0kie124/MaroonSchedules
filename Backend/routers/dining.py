@@ -13,8 +13,9 @@ from fastapi import Request
 from models.base import SanitizedBaseModel
 
 router = APIRouter(prefix="/dining", tags=["Dining"])
+public_router = APIRouter(prefix="/dining", tags=["Dining"])
 
-@router.get("/health")
+@public_router.get("/health")
 def dining_health():
     return {"status": "ok", "message": "Dining router is active"}
 
@@ -110,15 +111,21 @@ def update_dining_profile(request: Request, clerk_id: str, req: UpdateDiningProf
     return {"status": "success"}
 
 
-@router.get("/full-menu")
+@public_router.get("/full-menu")
 @limiter.limit("60/minute")
 def get_full_menu(
     request: Request,
     location: str = Query(...),
     meal_period: str = Query("lunch"),
     date: Optional[str] = Query(None),
+    force_refresh: bool = Query(False),
 ):
-    result = dining_service.get_full_menu(location_name=location, meal_period=meal_period, date_str=date)
+    result = dining_service.get_full_menu(
+        location_name=location,
+        meal_period=meal_period,
+        date_str=date,
+        force_refresh=force_refresh,
+    )
     if not result.get("success"):
         return {
             "success": False,

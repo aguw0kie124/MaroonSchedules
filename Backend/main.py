@@ -21,6 +21,7 @@ from routers.admin import router as admin_router
 from routers.annex import router as annex_router
 from routers.campus_hub import router as campus_hub_router
 from routers.clubs import router as clubs_router
+from routers.dining import public_router as public_dining_router
 from routers.dining import router as dining_router
 from routers.grades import router as grades_router
 from routers.maps import router as maps_router
@@ -104,6 +105,7 @@ protected_router.include_router(grades_router)
 protected_router.include_router(upload_router)
 protected_router.include_router(admin_router)
 
+public_router.include_router(public_dining_router)
 optional_protected_router.include_router(traffic_router, prefix="/traffic", tags=["Traffic"])
 optional_protected_router.include_router(campus_hub_router)
 optional_protected_router.include_router(annex_router)
