@@ -5,6 +5,7 @@ const CATEGORY_FALLBACKS: Record<string, any> = {
   Sports:             require('../../assets/images/events/fallbacks/sports.jpg'),
   Academic:           require('../../assets/images/events/fallbacks/academic.jpg'),
   Food:               require('../../assets/images/events/fallbacks/food.jpg'),
+  Promotions:         require('../../assets/images/events/fallbacks/promotions.jpg'),
   Social:             require('../../assets/images/events/fallbacks/social.jpg'),
   'Health & Wellness': require('../../assets/images/events/fallbacks/health_wellness.jpg'),
   Entertainment:      require('../../assets/images/events/fallbacks/entertainment.jpg'),
@@ -154,6 +155,19 @@ const KEYWORD_ENTRIES: { image: any; triggers: string[] }[] = [
     triggers: ['fundraiser', 'fundraising', 'charity', 'benefit', 'donation drive'],
   },
 ];
+
+/**
+ * Picks the best image for an event card. Off-campus / business events carry a
+ * real photo in `imageUrl`; prefer it. Everything else (and off-campus events
+ * with no photo) falls back to the keyword/category matcher.
+ */
+export function resolveEventImage(event: TAMUEvent): any | null {
+  const remote = (event.imageUrl || '').trim();
+  if (/^https?:\/\//i.test(remote)) {
+    return { uri: remote };
+  }
+  return getEventImage(event);
+}
 
 // ─── Main export ─────────────────────────────────────────────────────
 export function getEventImage(event: TAMUEvent): any | null {

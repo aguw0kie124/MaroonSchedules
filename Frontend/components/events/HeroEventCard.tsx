@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet, Dimensions, Image } from 'react-nati
 import { BadgeCheck, Calendar as CalendarIcon, MapPin, Map as MapIcon, Share2 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TAMUEvent, CATEGORY_META, classifyCategory, formatDate, formatTime } from './EventUtils';
-import { getEventImage } from './EventImages';
+import { resolveEventImage } from './EventImages';
 import { useTheme } from '../SharedUI';
 import { triggerNativeShare } from '../../utils/share';
 
@@ -182,7 +182,7 @@ export function HeroEventCard({
     >
       <View style={StyleSheet.absoluteFill}>
         <Image
-          source={getEventImage(event)}
+          source={resolveEventImage(event)}
           style={[StyleSheet.absoluteFill, { borderRadius: 34 }]}
         />
         <LinearGradient

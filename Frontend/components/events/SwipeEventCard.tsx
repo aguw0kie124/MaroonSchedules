@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { View, Text, Pressable, StyleSheet, Dimensions, Animated, PanResponder, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TAMUEvent, CATEGORY_META, classifyCategory, formatDate, formatTime, shortDescription } from './EventUtils';
-import { getEventImage } from './EventImages';
+import { resolveEventImage } from './EventImages';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.24;
@@ -163,7 +163,7 @@ export function SwipeEventCard({
         <Pressable style={{ flex: 1 }} onPress={onOpen}>
           <View style={StyleSheet.absoluteFill}>
             <Image
-              source={getEventImage(event)}
+              source={resolveEventImage(event)}
               style={[StyleSheet.absoluteFill, { borderRadius: 34 }]}
             />
             <LinearGradient

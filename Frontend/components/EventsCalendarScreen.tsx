@@ -83,7 +83,7 @@ import { scheduleAdminEventReviewNotification, scheduleEventNotification } from 
 import { promptGuestLogin } from '../utils/guestAccess';
 import { blockUser, reportContent } from '../services/socialFeedService';
 import { TagChips } from './common/TagChips';
-import { getEventImage } from './events/EventImages';
+import { resolveEventImage } from './events/EventImages';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
@@ -2887,7 +2887,7 @@ function HeroEventCard({
   const category = classifyCategory(event);
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
-  const eventImage = getEventImage(event as any);
+  const eventImage = resolveEventImage(event as any);
   const badgeLabel = getEventBadgeLabel(event);
   const handleSchedulePress = (e: any) => {
     e.stopPropagation();
@@ -3000,7 +3000,7 @@ function DiscoverRailCard({
   const category = classifyCategory(event);
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
-  const eventImage = getEventImage(event as any);
+  const eventImage = resolveEventImage(event as any);
   const contextLine = getEventContextLine(event);
 
   return (
@@ -3097,6 +3097,7 @@ function ListEventRow({
   const category = classifyCategory(event);
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
+  const thumbImage = resolveEventImage(event as any);
   const contextLine = getEventContextLine(event);
 
   return (
@@ -3108,8 +3109,8 @@ function ListEventRow({
       ]}
     >
       <View style={[stylesStatic.listThumb, { backgroundColor: meta.cardTint, width: 52, height: 52, borderRadius: 20 }]}>
-        {event.imageUrl ? (
-          <Image source={{ uri: event.imageUrl }} style={[stylesStatic.listThumbImage, { borderRadius: 20 }]} resizeMode="cover" />
+        {thumbImage ? (
+          <Image source={thumbImage} style={[stylesStatic.listThumbImage, { borderRadius: 20 }]} resizeMode="cover" />
         ) : (
           <View style={stylesStatic.listThumbFallback}>
             <Icon size={22} color="#FFFFFF" />
@@ -3471,6 +3472,7 @@ function DetailModal({
   const isDark = theme === 'dark';
 
   if (!event) return null;
+  const detailImage = resolveEventImage(event as any);
   const contextLine = getEventContextLine(event);
 
   return (
@@ -3483,9 +3485,9 @@ function DetailModal({
         ]}
       >
         <ScrollView showsVerticalScrollIndicator={false}>
-          {event.imageUrl ? (
+          {detailImage ? (
             <View style={stylesStatic.detailImageWrap}>
-              <Image source={{ uri: event.imageUrl }} style={stylesStatic.detailImage} resizeMode="cover" />
+              <Image source={detailImage} style={stylesStatic.detailImage} resizeMode="cover" />
             </View>
           ) : null}
           <View style={stylesStatic.detailHeader}>
