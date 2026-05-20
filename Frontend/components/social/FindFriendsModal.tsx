@@ -38,6 +38,19 @@ function getInitials(name: string) {
   return parts.map((p) => p[0]?.toUpperCase() || '').join('') || '?';
 }
 
+function sortByMutuals(users: any[]) {
+  return [...users].sort((a, b) => {
+    const mutualDiff = (b.mutual_count || 0) - (a.mutual_count || 0);
+    if (mutualDiff !== 0) return mutualDiff;
+    return (a.full_name || a.name || '').localeCompare(b.full_name || b.name || '');
+  });
+}
+
+function formatMutualLabel(count: number) {
+  if (!count) return null;
+  return count === 1 ? '1 mutual friend' : `${count} mutual friends`;
+}
+
 export function FindFriendsModal({ visible, onClose }: FindFriendsModalProps) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
@@ -61,7 +74,7 @@ export function FindFriendsModal({ visible, onClose }: FindFriendsModalProps) {
     setLoadingAll(true);
     searchUsers('', user.id, 50)
       .then((data) => {
-        const filtered = data.filter((r: any) => r.id !== user.id);
+        const filtered = sortByMutuals(data.filter((r: any) => r.id !== user.id));
         setAllUsers(filtered);
         setResults(filtered);
       })
@@ -83,7 +96,7 @@ export function FindFriendsModal({ visible, onClose }: FindFriendsModalProps) {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim()) {
-      setResults(allUsers);
+      setResults(sortByMutuals(allUsers));
       return;
     }
     const q = query.trim().toLowerCase();
@@ -94,7 +107,7 @@ export function FindFriendsModal({ visible, onClose }: FindFriendsModalProps) {
       const major = (u.major || '').toLowerCase();
       return name.includes(q) || uname.includes(q) || major.includes(q);
     });
-    setResults(local);
+    setResults(sortByMutuals(local));
 
     // Also do a network search for names not in the preloaded list
     debounceRef.current = setTimeout(async () => {
@@ -102,7 +115,7 @@ export function FindFriendsModal({ visible, onClose }: FindFriendsModalProps) {
       setSearching(true);
       try {
         const data = await searchUsers(query.trim(), user.id, 30);
-        const filtered = data.filter((r: any) => r.id !== user.id);
+        const filtered = sortByMutuals(data.filter((r: any) => r.id !== user.id));
         setResults(filtered);
         // Merge back into allUsers cache
         setAllUsers((prev) => {
@@ -309,7 +322,13 @@ export function FindFriendsModal({ visible, onClose }: FindFriendsModalProps) {
             renderItem={({ item: entry }) => {
               const name = entry.full_name || entry.name || 'Aggie User';
               const image = entry.profile_image_url || null;
-              const subtitle = entry.username ? `@${entry.username}` : entry.major || null;
+              const mutualLabel = formatMutualLabel(entry.mutual_count || 0);
+              const subtitleParts = [
+                mutualLabel,
+                entry.username ? `@${entry.username}` : null,
+                !entry.username && entry.major ? entry.major : null,
+              ].filter(Boolean);
+              const subtitle = subtitleParts.join(' · ') || null;
               return (
                 <Pressable style={styles.row} onPress={() => openProfile(entry)}>
                   {image ? (
@@ -322,7 +341,20 @@ export function FindFriendsModal({ visible, onClose }: FindFriendsModalProps) {
                   <View style={styles.rowInfo}>
                     <Text style={styles.rowName} numberOfLines={1}>{name}</Text>
                     {subtitle ? (
-                      <Text style={styles.rowMeta} numberOfLines={1}>{subtitle}</Text>
+                      <Text style={styles.rowMeta} numberOfLines={1}>
+                        {mutualLabel ? (
+                          <>
+                            <Text style={[styles.rowMeta, { color: COLORS.primary, fontWeight: '700' }]}>
+                              {mutualLabel}
+                            </Text>
+                            {subtitleParts.length > 1 ? (
+                              <Text style={styles.rowMeta}>{` · ${subtitleParts.slice(1).join(' · ')}`}</Text>
+                            ) : null}
+                          </>
+                        ) : (
+                          subtitle
+                        )}
+                      </Text>
                     ) : null}
                   </View>
                   {renderButton(entry)}

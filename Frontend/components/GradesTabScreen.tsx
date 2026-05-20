@@ -12,7 +12,8 @@ import {
   LayoutChangeEvent,
   useWindowDimensions,
 } from 'react-native';
-import { BarChart2, Hash } from 'lucide-react-native';
+import { BarChart2, CalendarDays, ChevronRight, Hash } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from './SharedUI';
 import { GradesScreen } from './GradesScreen';
@@ -27,6 +28,7 @@ const TABS: { key: Tab; label: string; icon: typeof BarChart2 }[] = [
 
 export function GradesTabScreen() {
   const { COLORS } = useTheme();
+  const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<Tab>('distributions');
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -86,6 +88,26 @@ export function GradesTabScreen() {
     <View style={styles.container}>
       {/* Top safe area background fill */}
       <View style={[styles.topSafe, { height: insets.top }]} />
+
+      {/* Schedule planner entry */}
+      <View style={styles.scheduleEntryWrap}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.scheduleEntryBtn,
+            pressed && { opacity: 0.85 },
+          ]}
+          onPress={() => navigation.navigate('ScheduleList')}
+        >
+          <View style={[styles.scheduleEntryIcon, { backgroundColor: `${COLORS.primary}18` }]}>
+            <CalendarDays size={20} color={COLORS.primary} strokeWidth={2.2} />
+          </View>
+          <View style={styles.scheduleEntryText}>
+            <Text style={styles.scheduleEntryTitle}>Schedule Planner</Text>
+            <Text style={styles.scheduleEntrySub}>Build and manage your class schedules</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
+      </View>
 
       {/* Segmented control header */}
       <View style={styles.headerWrap}>
@@ -150,9 +172,47 @@ const getStyles = (COLORS: any, topInset: number) =>
     topSafe: {
       backgroundColor: COLORS.background,
     },
-    headerWrap: {
+    scheduleEntryWrap: {
       paddingHorizontal: 20,
       paddingTop: 8,
+      paddingBottom: 4,
+      backgroundColor: COLORS.background,
+    },
+    scheduleEntryBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: COLORS.surface,
+      borderRadius: 14,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    scheduleEntryIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    scheduleEntryText: {
+      flex: 1,
+    },
+    scheduleEntryTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+    },
+    scheduleEntrySub: {
+      fontSize: 12,
+      fontWeight: '500',
+      color: COLORS.textTertiary,
+      marginTop: 2,
+    },
+    headerWrap: {
+      paddingHorizontal: 20,
+      paddingTop: 4,
       paddingBottom: 12,
       backgroundColor: COLORS.background,
     },

@@ -656,6 +656,67 @@ def list_friend_requests(clerk_id: str) -> dict[str, list[dict]]:
     }
 
 
+def get_mutual_friend_counts(searcher_id: str, candidate_ids: list[str]) -> dict[str, int]:
+    """Return how many accepted friends searcher shares with each candidate."""
+    if not searcher_id or not candidate_ids:
+        return {}
+
+    unique_candidates = list({cid for cid in candidate_ids if cid and cid != searcher_id})
+    if not unique_candidates:
+        return {}
+
+    with get_pool().connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                WITH searcher_friends AS (
+                    SELECT CASE
+                        WHEN requester_id = %s THEN recipient_id
+                        ELSE requester_id
+                    END AS friend_id
+                    FROM network_connections
+                    WHERE status = 'accepted'
+                      AND (requester_id = %s OR recipient_id = %s)
+                ),
+                candidate_edges AS (
+                    SELECT
+                        CASE
+                            WHEN nc.requester_id = ANY(%s) THEN nc.requester_id
+                            ELSE nc.recipient_id
+                        END AS candidate_id,
+                        CASE
+                            WHEN nc.requester_id = ANY(%s) THEN nc.recipient_id
+                            ELSE nc.requester_id
+                        END AS friend_id
+                    FROM network_connections nc
+                    WHERE nc.status = 'accepted'
+                      AND (nc.requester_id = ANY(%s) OR nc.recipient_id = ANY(%s))
+                )
+                SELECT ce.candidate_id, COUNT(DISTINCT ce.friend_id)::int AS mutual_count
+                FROM candidate_edges ce
+                INNER JOIN searcher_friends sf ON ce.friend_id = sf.friend_id
+                WHERE ce.candidate_id = ANY(%s)
+                  AND ce.friend_id <> ce.candidate_id
+                  AND ce.friend_id <> %s
+                GROUP BY ce.candidate_id
+                """,
+                (
+                    searcher_id,
+                    searcher_id,
+                    searcher_id,
+                    unique_candidates,
+                    unique_candidates,
+                    unique_candidates,
+                    unique_candidates,
+                    unique_candidates,
+                    searcher_id,
+                ),
+            )
+            rows = cur.fetchall() or []
+
+    return {row["candidate_id"]: int(row.get("mutual_count") or 0) for row in rows if row.get("candidate_id")}
+
+
 def search_users(searcher_id: str, query: str, limit: int = 30) -> list[dict]:
     """Search users by name/email/major. Returns all users when query is empty
     so the UI can show suggestions immediately (Instagram-style autofill)."""
@@ -730,6 +791,19 @@ def search_users(searcher_id: str, query: str, limit: int = 30) -> list[dict]:
         )
         if len(results) >= limit:
             break
+
+    if results:
+        mutual_counts = get_mutual_friend_counts(searcher_id, [r["id"] for r in results])
+        for entry in results:
+            entry["mutual_count"] = mutual_counts.get(entry["id"], 0)
+
+        if not normalized_query:
+            results.sort(
+                key=lambda r: (
+                    -(r.get("mutual_count") or 0),
+                    r.get("full_name") or r.get("name") or "",
+                ),
+            )
 
     return results
 

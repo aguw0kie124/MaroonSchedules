@@ -37,6 +37,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
+import { GradesTabScreen } from './components/GradesTabScreen';
 import { ProfDetailScreen } from './components/ProfDetailScreen';
 import { APEquivalencyScreen } from './components/APEquivalencyScreen';
 import { TimerScreen } from './components/TimerScreen';
@@ -53,7 +54,7 @@ import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 import RestaurantMenuScreen from './components/dining/RestaurantMenuScreen';
 
-import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio, UserRound, LayoutGrid, RotateCw, LibraryBig, BarChart2, CalendarDays } from 'lucide-react-native';
+import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio, UserRound, LayoutGrid, RotateCw, LibraryBig, BarChart2 } from 'lucide-react-native';
 import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
@@ -286,7 +287,6 @@ if (!publishableKey) {
 
 const Stack = createStackNavigator();
 const GradesStackNav = createStackNavigator();
-const ScheduleStackNav = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function withTabMotion(Component: React.ComponentType<any>, delay = 0) {
@@ -306,31 +306,6 @@ const AnimatedDiningScreen = withTabMotion(DiningDashboard, 30);
 const AnimatedClubsScreen = withTabMotion(ClubAccessScreen, 50);
 const AnimatedSettingsScreen = withTabMotion(Profile, 90);
 
-function ScheduleStack() {
-  const { COLORS } = useTheme();
-  return (
-    <ScheduleStackNav.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: COLORS.surface },
-        headerTintColor: COLORS.textPrimary,
-        headerTitleStyle: { fontWeight: '700' },
-        cardStyle: { backgroundColor: COLORS.background },
-      }}
-    >
-      <ScheduleStackNav.Screen
-        name="ScheduleListHome"
-        component={ScheduleListScreen}
-        options={{ title: 'My Schedules' }}
-      />
-      <ScheduleStackNav.Screen
-        name="ScheduleDetailInner"
-        component={ScheduleDetailScreen}
-        options={{ title: 'Schedule Details' }}
-      />
-    </ScheduleStackNav.Navigator>
-  );
-}
-
 function GradesStack() {
   const { COLORS } = useTheme();
   return (
@@ -344,7 +319,7 @@ function GradesStack() {
     >
       <GradesStackNav.Screen
         name="GradesHome"
-        component={GradesScreen}
+        component={GradesTabScreen}
         options={{ headerShown: false }}
       />
       <GradesStackNav.Screen
@@ -420,13 +395,6 @@ function MainTabs(props: any) {
       }
       return null;
     }).filter(s => s !== null),
-    // Schedule Planner is always available as a standalone tab
-    {
-      name: 'Schedule',
-      component: ScheduleStack,
-      title: 'Schedule',
-      icon: CalendarDays,
-    },
     {
       name: 'Profile',
       component: AnimatedSettingsScreen,
