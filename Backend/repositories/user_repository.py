@@ -77,6 +77,7 @@ def _user_select_clause() -> str:
         "clerk_id",
         "email",
         "full_name",
+        "username",
         "profile_image_url",
         "major",
         "graduation_year",
@@ -99,6 +100,7 @@ def _user_select_clause() -> str:
         "is_admin",
         "bio",
         "website",
+        "expo_push_token",
     ]
     existing = _user_columns()
     return ", ".join(column for column in desired_columns if column in existing)
@@ -158,6 +160,8 @@ def _ensure_user_schema(conn: psycopg.Connection) -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS website TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS expo_push_token TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT",
         """
         CREATE TABLE IF NOT EXISTS admin_applications (
             id BIGSERIAL PRIMARY KEY,
@@ -209,8 +213,8 @@ def _ensure_user_schema(conn: psycopg.Connection) -> None:
     for statement in statements:
         _execute_optional_ddl(conn, statement)
 
-def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile_image_url: str = None) -> dict:
-    """Insert a new user row or update email/full_name if the clerk_id already exists."""
+def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile_image_url: str = None, username: str = None) -> dict:
+    """Insert a new user row or update email/full_name/username if the clerk_id already exists."""
     tour_completed_default = True if email and email.endswith("@gmail.com") else False
     columns = _user_columns()
     insert_columns = ["clerk_id"]
@@ -221,6 +225,9 @@ def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile
     if "full_name" in columns:
         insert_columns.append("full_name")
         insert_values.append(encryption_service.encrypt_string(full_name) if full_name else None)
+    if "username" in columns:
+        insert_columns.append("username")
+        insert_values.append(username or None)
     if "profile_image_url" in columns:
         insert_columns.append("profile_image_url")
         insert_values.append(profile_image_url)
@@ -233,6 +240,8 @@ def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile
         update_fields.append("email = COALESCE(EXCLUDED.email, users.email)")
     if "full_name" in columns:
         update_fields.append("full_name = COALESCE(EXCLUDED.full_name, users.full_name)")
+    if "username" in columns:
+        update_fields.append("username = COALESCE(EXCLUDED.username, users.username)")
     if "profile_image_url" in columns:
         update_fields.append("profile_image_url = COALESCE(EXCLUDED.profile_image_url, users.profile_image_url)")
     if "updated_at" in columns:
@@ -573,10 +582,14 @@ def list_friends(clerk_id: str) -> list[dict]:
         profile = get_user(friend_id)
         if not profile:
             continue
+        username = profile.get("username") or ""
+        full_name = profile.get("full_name") or ""
         friends.append(
             {
                 "id": profile["clerk_id"],
-                "name": profile.get("full_name") or profile.get("email") or "Aggie User",
+                "full_name": full_name or None,
+                "username": username or None,
+                "name": full_name or username or "Aggie User",
                 "profile_image_url": profile.get("profile_image_url"),
                 "major": profile.get("major"),
                 "graduation_year": profile.get("graduation_year"),
@@ -618,9 +631,13 @@ def list_friend_requests(clerk_id: str) -> dict[str, list[dict]]:
         if not profile:
             continue
 
+        username = profile.get("username") or ""
+        full_name = profile.get("full_name") or ""
         payload = {
             "id": profile["clerk_id"],
-            "name": profile.get("full_name") or profile.get("email") or "Aggie User",
+            "full_name": full_name or None,
+            "username": username or None,
+            "name": full_name or username or "Aggie User",
             "profile_image_url": profile.get("profile_image_url"),
             "major": profile.get("major"),
             "graduation_year": profile.get("graduation_year"),
@@ -639,10 +656,12 @@ def list_friend_requests(clerk_id: str) -> dict[str, list[dict]]:
     }
 
 
-def search_users(searcher_id: str, query: str, limit: int = 10) -> list[dict]:
+def search_users(searcher_id: str, query: str, limit: int = 30) -> list[dict]:
+    """Search users by name/email/major. Returns all users when query is empty
+    so the UI can show suggestions immediately (Instagram-style autofill)."""
     normalized_query = (query or "").strip().lower()
-    if not normalized_query:
-        return []
+    # NOTE: we intentionally do NOT return early on empty query — empty query
+    # returns all users (filtered by blocked list) for autofill UX.
 
     blocked_ids: set[str] = set()
     try:
@@ -654,20 +673,23 @@ def search_users(searcher_id: str, query: str, limit: int = 10) -> list[dict]:
 
     relationships = get_connection_relationships(searcher_id)
 
+    # Fetch all non-self users; limit raised so small deployments see everyone.
+    # Encrypted full_name/email are filtered in Python after decryption.
     with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 """
-                SELECT clerk_id, full_name, email, profile_image_url, major, graduation_year, updated_at
+                SELECT clerk_id, full_name, email, username, profile_image_url, major, graduation_year, updated_at
                 FROM users
                 WHERE clerk_id <> %s
                 ORDER BY updated_at DESC NULLS LAST
-                LIMIT 500
+                LIMIT 1000
                 """,
                 (searcher_id,),
             )
             rows = cur.fetchall() or []
+
 
     results: list[dict] = []
     for row in rows:
@@ -676,16 +698,27 @@ def search_users(searcher_id: str, query: str, limit: int = 10) -> list[dict]:
             continue
 
         full_name = _safe_decrypt(row.get("full_name")) or ""
-        email = _safe_decrypt(row.get("email")) or ""
+        raw_email = _safe_decrypt(row.get("email")) or ""
+        # Use only the local-part of the email (before @) for display-safe matching
+        email_local = raw_email.split("@")[0] if "@" in raw_email else raw_email
+        username = row.get("username") or ""
         major = row.get("major") or ""
-        haystack = " ".join([full_name, email, major]).lower()
-        if normalized_query not in haystack:
-            continue
+        # Also include the last 8 chars of clerk_id so dev/test accounts are findable
+        clerk_tail = clerk_id[-8:] if len(clerk_id) >= 8 else clerk_id
 
+        # When no query, include everyone; otherwise filter by haystack
+        if normalized_query:
+            haystack = " ".join([full_name, username, email_local, raw_email, major, clerk_tail]).lower()
+            if normalized_query not in haystack:
+                continue
+
+        display_name = full_name or username or email_local or "Aggie User"
         results.append(
             {
                 "id": clerk_id,
-                "name": full_name or email or "Aggie User",
+                "full_name": full_name or None,
+                "username": username or None,
+                "name": display_name,
                 "profile_image_url": row.get("profile_image_url"),
                 "major": major or None,
                 "graduation_year": row.get("graduation_year") or None,
@@ -699,6 +732,8 @@ def search_users(searcher_id: str, query: str, limit: int = 10) -> list[dict]:
             break
 
     return results
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -840,3 +875,48 @@ def set_tos_accepted(clerk_id: str) -> None:
                 (clerk_id,),
             )
         conn.commit()
+
+
+def save_push_token(clerk_id: str, token: str | None) -> None:
+    """Store (or clear) the Expo push token for a user so the backend can deliver
+    background notifications when the app is not running."""
+    columns = _user_columns()
+    if "expo_push_token" not in columns:
+        return
+    update_clause = "expo_push_token = %s"
+    if "updated_at" in columns:
+        update_clause += ", updated_at = NOW()"
+    with get_pool().connection() as conn:
+        _ensure_user_schema_once(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE users SET {update_clause} WHERE clerk_id = %s",
+                (token, clerk_id),
+            )
+        conn.commit()
+
+
+def get_push_tokens_for_users(clerk_ids: list[str]) -> dict[str, str]:
+    """Return a mapping of clerk_id -> expo_push_token for the provided IDs.
+    Only entries that have a non-null token are included."""
+    if not clerk_ids:
+        return {}
+    columns = _user_columns()
+    if "expo_push_token" not in columns:
+        return {}
+    with get_pool().connection() as conn:
+        _ensure_user_schema_once(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT clerk_id, expo_push_token
+                FROM users
+                WHERE clerk_id = ANY(%s)
+                  AND expo_push_token IS NOT NULL
+                  AND expo_push_token <> ''
+                """,
+                (clerk_ids,),
+            )
+            rows = cur.fetchall() or []
+    return {row[0]: row[1] for row in rows if row[0] and row[1]}
+

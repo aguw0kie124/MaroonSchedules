@@ -792,6 +792,20 @@ export function GradesScreen() {
         performSearch(subject, courseNum);
     }, [subject, courseNum]);
 
+    const handleReset = useCallback(() => {
+        setSubject('');
+        setCourseNum('');
+        setResult(null);
+        setScreenState('idle');
+        setErrorMsg('');
+        setSearchedSubject('');
+        setSearchedCourseNum('');
+        setNameFilter('');
+        setCourseInfo(null);
+        setProfRatings({});
+        AsyncStorage.removeItem(GRADES_STORAGE_KEY).catch(() => {});
+    }, []);
+
     return (
         <SafeAreaView style={styles.container}>
             <KeyboardAvoidingView
@@ -809,25 +823,49 @@ export function GradesScreen() {
 
                 {/* ── Search inputs ── */}
                 <View style={styles.searchRow}>
-                    <TextInput
-                        style={[styles.input, { flex: 1.2 }]}
-                        placeholder="Subject"
-                        placeholderTextColor={COLORS.textTertiary}
-                        value={subject}
-                        onChangeText={t => setSubject(t.toUpperCase())}
-                        autoCapitalize="characters"
-                        returnKeyType="next"
-                    />
-                    <TextInput
-                        style={[styles.input, { flex: 1 }]}
-                        placeholder="Number"
-                        placeholderTextColor={COLORS.textTertiary}
-                        value={courseNum}
-                        onChangeText={setCourseNum}
-                        keyboardType="default"
-                        returnKeyType="search"
-                        onSubmitEditing={handleSearch}
-                    />
+                    {/* Subject input with inline X */}
+                    <View style={[styles.inputWrap, { flex: 1.2 }]}>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Subject"
+                            placeholderTextColor={COLORS.textTertiary}
+                            value={subject}
+                            onChangeText={t => setSubject(t.toUpperCase())}
+                            autoCapitalize="characters"
+                            returnKeyType="next"
+                        />
+                        {subject.length > 0 && (
+                            <Pressable
+                                onPress={handleReset}
+                                hitSlop={8}
+                                style={styles.inputClearBtn}
+                            >
+                                <X size={13} color={COLORS.textTertiary} />
+                            </Pressable>
+                        )}
+                    </View>
+                    {/* Number input with inline X */}
+                    <View style={[styles.inputWrap, { flex: 1 }]}>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Number"
+                            placeholderTextColor={COLORS.textTertiary}
+                            value={courseNum}
+                            onChangeText={setCourseNum}
+                            keyboardType="default"
+                            returnKeyType="search"
+                            onSubmitEditing={handleSearch}
+                        />
+                        {courseNum.length > 0 && (
+                            <Pressable
+                                onPress={() => setCourseNum('')}
+                                hitSlop={8}
+                                style={styles.inputClearBtn}
+                            >
+                                <X size={13} color={COLORS.textTertiary} />
+                            </Pressable>
+                        )}
+                    </View>
                     <Pressable
                         style={({ pressed }) => [styles.searchBtn, pressed && { opacity: 0.8 }]}
                         onPress={handleSearch}
@@ -1025,8 +1063,21 @@ const getStyles = (COLORS: any) =>
             borderColor: COLORS.border,
             borderRadius: 12,
             paddingHorizontal: 12,
+            paddingRight: 32, // make room for clear button
             fontSize: 15,
             color: COLORS.textPrimary,
+            flex: 1,
+        },
+        inputWrap: {
+            position: 'relative',
+            justifyContent: 'center',
+        },
+        inputClearBtn: {
+            position: 'absolute',
+            right: 10,
+            height: 46,
+            justifyContent: 'center',
+            alignItems: 'center',
         },
         searchBtn: {
             height: 46,

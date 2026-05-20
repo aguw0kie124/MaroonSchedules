@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
-import React from 'react';
-import { View, StyleSheet, Pressable, Image } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, StyleSheet, Pressable, Image, Linking, Alert } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
@@ -76,6 +76,7 @@ import { ClubAccessScreen } from './components/ClubAccessScreen';
 import PublicProfileScreen from './components/social/PublicProfileScreen';
 import { FocusMotionView } from './components/common/Motion';
 import { useEventStore, type MajorOption } from './store/eventStore';
+import { addFriend } from './services/socialFeedService';
 
 const VALID_EVENT_MAJORS: MajorOption[] = [
   'Engineering',
@@ -133,6 +134,7 @@ function UserSync({ children }: { children: React.ReactNode }) {
         user.primaryEmailAddress?.emailAddress,
         user.fullName ?? undefined,
         user.imageUrl ?? undefined,
+        user.username ?? undefined,
       ).then((data) => {
         if (data) {
           if (typeof data.tos_accepted === 'boolean') {
@@ -184,6 +186,38 @@ function UserSync({ children }: { children: React.ReactNode }) {
       }).catch((err: any) => console.warn('UserSync failed:', err));
     }
   }, [setEventPreferencesCompleted, setMajorSpecific, setPreferredEventCategories, setPreferredEventInterests, setPreferredSocialMode, setPreferredTime, setSelectedMajor, setTOSAccepted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
+
+  // Deep link: maroonlife://add-friend/<targetUserId>
+  useEffect(() => {
+    if (!user?.id) return;
+    const handleUrl = async (url: string) => {
+      const match = url.match(/maroonlife:\/\/add-friend\/([^?#/]+)/);
+      if (!match) return;
+      const targetId = match[1];
+      if (targetId === user.id) return;
+      Alert.alert(
+        'Add Friend',
+        'Accept this friend invite and send a connection request?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Connect',
+            onPress: async () => {
+              try {
+                await addFriend(targetId, user.id);
+                Alert.alert('Connected!', 'Friend request sent successfully.');
+              } catch (e) {
+                Alert.alert('Error', 'Could not send friend request. Please try again.');
+              }
+            },
+          },
+        ],
+      );
+    };
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    Linking.getInitialURL().then((url) => { if (url) handleUrl(url); }).catch(() => {});
+    return () => sub.remove();
+  }, [user?.id]);
 
   return <>{children}</>;
 }

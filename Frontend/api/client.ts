@@ -248,14 +248,15 @@ export async function requestJson(path: string, init: RequestInit = {}, timeoutM
 // User endpoints
 // ============================================================
 
-export const syncUser = async (clerkId: string, email?: string, fullName?: string, profileImageUrl?: string) => {
+export const syncUser = async (clerkId: string, email?: string, fullName?: string, profileImageUrl?: string, username?: string) => {
     return requestJson('/users/sync', {
         method: 'POST',
         body: JSON.stringify({
             clerk_id: clerkId,
             email,
             full_name: fullName,
-            profile_image_url: profileImageUrl
+            profile_image_url: profileImageUrl,
+            username,
         }),
     });
 };

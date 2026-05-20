@@ -161,13 +161,15 @@ class SyncUserRequest(BaseModel):
     email: Optional[str] = None
     full_name: Optional[str] = None
     profile_image_url: Optional[str] = None
+    username: Optional[str] = None
 
 
 @protected_router.post("/users/sync")
 def sync_user(req: SyncUserRequest = Body(...), auth_user_id: str = Depends(require_auth)):
     """Create or update a user row when they sign in."""
     ensure_matching_user(auth_user_id, req.clerk_id, detail="You can only sync your own profile")
-    return user_service.sync_user(req.clerk_id, req.email, req.full_name, req.profile_image_url)
+    return user_service.sync_user(req.clerk_id, req.email, req.full_name, req.profile_image_url, username=req.username)
+
 
 
 @protected_router.post("/users/{clerk_id}/tos/accept/")

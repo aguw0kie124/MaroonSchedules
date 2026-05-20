@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '@clerk/clerk-expo';
 import * as Notifications from 'expo-notifications';
 import React from 'react';
-import { initializeFeedUser, getFriends, getPingFeed } from '../../services/socialFeedService';
+import { initializeFeedUser, getFriends, getPingFeed, registerPushToken } from '../../services/socialFeedService';
 import { checkNotificationPermissions } from '../../services/notificationService';
 import { useAppShellStore } from '../../store/appShellStore';
 
@@ -100,16 +100,42 @@ async function scheduleFriendPingNotification(ping: FriendPingActivity) {
   });
 }
 
+/**
+ * Registers this device's Expo push token with the backend so that
+ * background (closed-app) notifications can be sent via APNs / FCM.
+ */
+async function syncPushTokenWithBackend(userId: string) {
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== 'granted') return;
+    const tokenData = await Notifications.getExpoPushTokenAsync();
+    if (tokenData?.data) {
+      await registerPushToken(userId, tokenData.data);
+    }
+  } catch (e) {
+    if (__DEV__) console.warn('[FriendPingBridge] push token sync failed', e);
+  }
+}
+
 export function FriendPingNotificationBridge() {
   const { user } = useUser();
   const notificationsEnabled = useAppShellStore((state) => state.notificationsEnabled);
   const pingNotifications = useAppShellStore((state) => state.pingNotifications);
   const requestInFlightRef = React.useRef(false);
+  const tokenSyncedRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!user) return;
     initializeFeedUser(user);
   }, [user]);
+
+  // Register push token with backend once per session
+  React.useEffect(() => {
+    const userId = user?.id;
+    if (!userId || tokenSyncedRef.current) return;
+    tokenSyncedRef.current = true;
+    syncPushTokenWithBackend(userId).catch(() => null);
+  }, [user?.id]);
 
   React.useEffect(() => {
     const userId = user?.id;
