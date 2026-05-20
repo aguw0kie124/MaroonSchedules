@@ -37,6 +37,8 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
+import { ProfDetailScreen } from './components/ProfDetailScreen';
+import { APEquivalencyScreen } from './components/APEquivalencyScreen';
 import { TimerScreen } from './components/TimerScreen';
 
 import DiningDashboard from './components/dining/DiningDashboard';
@@ -51,7 +53,7 @@ import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 import RestaurantMenuScreen from './components/dining/RestaurantMenuScreen';
 
-import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio, UserRound, LayoutGrid, RotateCw, LibraryBig, BarChart2 } from 'lucide-react-native';
+import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio, UserRound, LayoutGrid, RotateCw, LibraryBig, BarChart2, CalendarDays } from 'lucide-react-native';
 import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
@@ -283,6 +285,8 @@ if (!publishableKey) {
 }
 
 const Stack = createStackNavigator();
+const GradesStackNav = createStackNavigator();
+const ScheduleStackNav = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function withTabMotion(Component: React.ComponentType<any>, delay = 0) {
@@ -301,7 +305,61 @@ const AnimatedSocialScreen = withTabMotion(SocialHubScreen, 10);
 const AnimatedDiningScreen = withTabMotion(DiningDashboard, 30);
 const AnimatedClubsScreen = withTabMotion(ClubAccessScreen, 50);
 const AnimatedSettingsScreen = withTabMotion(Profile, 90);
-const AnimatedGradesTabScreen = withTabMotion(GradesScreen, 60);
+
+function ScheduleStack() {
+  const { COLORS } = useTheme();
+  return (
+    <ScheduleStackNav.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: COLORS.surface },
+        headerTintColor: COLORS.textPrimary,
+        headerTitleStyle: { fontWeight: '700' },
+        cardStyle: { backgroundColor: COLORS.background },
+      }}
+    >
+      <ScheduleStackNav.Screen
+        name="ScheduleListHome"
+        component={ScheduleListScreen}
+        options={{ title: 'My Schedules' }}
+      />
+      <ScheduleStackNav.Screen
+        name="ScheduleDetailInner"
+        component={ScheduleDetailScreen}
+        options={{ title: 'Schedule Details' }}
+      />
+    </ScheduleStackNav.Navigator>
+  );
+}
+
+function GradesStack() {
+  const { COLORS } = useTheme();
+  return (
+    <GradesStackNav.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: COLORS.surface },
+        headerTintColor: COLORS.textPrimary,
+        headerTitleStyle: { fontWeight: '700' },
+        cardStyle: { backgroundColor: COLORS.background },
+      }}
+    >
+      <GradesStackNav.Screen
+        name="GradesHome"
+        component={GradesScreen}
+        options={{ headerShown: false }}
+      />
+      <GradesStackNav.Screen
+        name="ProfDetail"
+        component={ProfDetailScreen}
+        options={{ title: 'Professor Detail', headerBackTitle: 'Back' }}
+      />
+      <GradesStackNav.Screen
+        name="APEquivalency"
+        component={APEquivalencyScreen}
+        options={{ title: 'AP Credit Equivalencies', headerBackTitle: 'Back' }}
+      />
+    </GradesStackNav.Navigator>
+  );
+}
 
 function MainTabs(props: any) {
   const { COLORS } = useTheme();
@@ -355,13 +413,20 @@ function MainTabs(props: any) {
       if (item.id === 'Grades') {
         return {
           name: 'Grades',
-          component: AnimatedGradesTabScreen,
+          component: GradesStack,
           title: 'Grades',
           icon: BarChart2,
         };
       }
       return null;
     }).filter(s => s !== null),
+    // Schedule Planner is always available as a standalone tab
+    {
+      name: 'Schedule',
+      component: ScheduleStack,
+      title: 'Schedule',
+      icon: CalendarDays,
+    },
     {
       name: 'Profile',
       component: AnimatedSettingsScreen,
@@ -573,6 +638,10 @@ function RootNavigator() {
 
             <Stack.Screen name="NewCourseSearch" component={NewCourseSearchScreen} options={{ headerShown: true, title: 'Course Search' }} />
             <Stack.Screen name="NewCourseDetail" component={NewCourseDetailScreen} options={{ headerShown: true, title: 'Course Details' }} />
+            <Stack.Screen name="GradesScreen" component={GradesScreen} options={{ headerShown: true, title: 'Grade Distributions' }} />
+            {/* ProfDetail + APEquivalency also in root stack so they're reachable when GradesScreen is pushed outside the Grades tab */}
+            <Stack.Screen name="ProfDetail" component={ProfDetailScreen} options={{ headerShown: true, title: 'Professor Detail' }} />
+            <Stack.Screen name="APEquivalency" component={APEquivalencyScreen} options={{ headerShown: true, title: 'AP Credit Equivalencies' }} />
             <Stack.Screen name="ScheduleList" component={ScheduleListScreen} options={{ headerShown: true, title: 'My Schedules' }} />
             <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
             <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
@@ -612,7 +681,6 @@ function RootNavigator() {
             <Stack.Screen name="WeightTracker" component={WeightTrackerScreen} options={{ headerShown: false }} />
             <Stack.Screen name="TrackerHub" component={TrackerHubScreen} options={{ headerShown: false }} />
             <Stack.Screen name="StreakHub" component={StreakHubScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="GradesScreen" component={GradesScreen} options={{ headerShown: true, title: 'Grade Distributions' }} />
           </>
         ) : (
           <>

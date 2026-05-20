@@ -155,14 +155,45 @@ export function ScheduleListScreen() {
                             onChangeText={setName}
                         />
 
-                        <Text style={styles.inputLabel}>Term Code</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholderTextColor={COLORS.textSecondary}
-                            placeholder="e.g. 202611"
-                            value={term}
-                            onChangeText={setTerm}
-                        />
+                        <Text style={styles.inputLabel}>Term</Text>
+                        {/* Quick-select grid of upcoming/recent terms */}
+                        {(() => {
+                            const now = new Date();
+                            const yr = now.getFullYear();
+                            const presets = [
+                                { label: `Spring ${yr}`, code: `${yr}11` },
+                                { label: `Summer ${yr}`, code: `${yr}21` },
+                                { label: `Fall ${yr}`, code: `${yr}31` },
+                                { label: `Spring ${yr + 1}`, code: `${yr + 1}11` },
+                                { label: `Summer ${yr + 1}`, code: `${yr + 1}21` },
+                                { label: `Fall ${yr + 1}`, code: `${yr + 1}31` },
+                            ];
+                            return (
+                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                                    {presets.map(p => (
+                                        <Pressable
+                                            key={p.code}
+                                            onPress={() => setTerm(p.code)}
+                                            style={({pressed}) => ({
+                                                paddingHorizontal: 14,
+                                                paddingVertical: 10,
+                                                borderRadius: 10,
+                                                borderWidth: 2,
+                                                borderColor: term === p.code ? COLORS.primary : '#404040',
+                                                backgroundColor: term === p.code ? COLORS.primary + '22' : '#1E1E1E',
+                                                opacity: pressed ? 0.8 : 1,
+                                            })}
+                                        >
+                                            <Text style={{
+                                                color: term === p.code ? COLORS.primary : '#FFFFFF',
+                                                fontWeight: term === p.code ? '800' : '500',
+                                                fontSize: 14,
+                                            }}>{p.label}</Text>
+                                        </Pressable>
+                                    ))}
+                                </View>
+                            );
+                        })()}
 
                         <PrimaryButton title="Create" onPress={handleCreate} style={{ marginTop: 24 }} />
                     </View>
