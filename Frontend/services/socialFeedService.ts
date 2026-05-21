@@ -822,19 +822,21 @@ export async function getFriendRequests(userId: string): Promise<{ incoming: any
     }
 }
 
-export async function searchUsers(query: string, userId?: string, limit = 10): Promise<any[]> {
+export async function searchUsers(query: string, userId?: string, limit = 30): Promise<any[]> {
     const requesterId = userId || connectedUserId;
-    if (!requesterId) {
-        throw new Error('Must be signed in to search users.');
+    if (!requesterId) return [];
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (query) params.set('query', query);
+    try {
+        const res = await feedFetch(`/chat/users/${requesterId}/friends/search?${params.toString()}`);
+        if (!res.ok) return [];
+        return await res.json();
+    } catch (e) {
+        if (__DEV__) console.warn('[NativeFeeds] searchUsers error', e);
+        return [];
     }
-    const params = new URLSearchParams({
-        query,
-        limit: String(limit),
-    });
-    const res = await feedFetch(`/chat/users/${requesterId}/friends/search?${params.toString()}`);
-    if (!res.ok) throw new Error('Failed to search users.');
-    return await res.json();
 }
+
 
 export async function reportContent(params: {
     reporteeId: string;
@@ -876,3 +878,23 @@ export async function deleteAccount(userId: string): Promise<void> {
     });
     if (!res.ok) throw new Error('Failed to delete account.');
 }
+
+/**
+ * Register (or clear) the Expo push token so the backend can send
+ * push notifications to this device even when the app is closed.
+ */
+export async function registerPushToken(userId: string, token: string | null): Promise<void> {
+    try {
+        const res = await feedFetch(`/chat/users/${userId}/push-token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token }),
+        });
+        if (!res.ok && __DEV__) {
+            console.warn('[PushToken] Failed to register push token', await res.text());
+        }
+    } catch (e) {
+        if (__DEV__) console.warn('[PushToken] registerPushToken error', e);
+    }
+}
+

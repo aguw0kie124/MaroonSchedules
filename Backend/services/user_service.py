@@ -11,9 +11,9 @@ from repositories import user_repository
 # Auth / sync
 # ---------------------------------------------------------------------------
 
-def sync_user(clerk_id: str, email: str = None, full_name: str = None, profile_image_url: str = None) -> dict:
+def sync_user(clerk_id: str, email: str = None, full_name: str = None, profile_image_url: str = None, username: str = None) -> dict:
     """Called on every sign-in to ensure the user exists in the DB."""
-    return user_repository.upsert_user(clerk_id, email, full_name, profile_image_url)
+    return user_repository.upsert_user(clerk_id, email, full_name, profile_image_url, username=username)
 
 
 # ---------------------------------------------------------------------------

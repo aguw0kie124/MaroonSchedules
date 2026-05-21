@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
-import React from 'react';
-import { View, StyleSheet, Pressable, Image } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, StyleSheet, Pressable, Image, Linking, Alert } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
@@ -37,6 +37,9 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
+import { GradesTabScreen } from './components/GradesTabScreen';
+import { ProfDetailScreen } from './components/ProfDetailScreen';
+import { APEquivalencyScreen } from './components/APEquivalencyScreen';
 import { TimerScreen } from './components/TimerScreen';
 
 import DiningDashboard from './components/dining/DiningDashboard';
@@ -76,6 +79,7 @@ import { ClubAccessScreen } from './components/ClubAccessScreen';
 import PublicProfileScreen from './components/social/PublicProfileScreen';
 import { FocusMotionView } from './components/common/Motion';
 import { useEventStore, type MajorOption } from './store/eventStore';
+import { addFriend } from './services/socialFeedService';
 
 const VALID_EVENT_MAJORS: MajorOption[] = [
   'Engineering',
@@ -133,6 +137,7 @@ function UserSync({ children }: { children: React.ReactNode }) {
         user.primaryEmailAddress?.emailAddress,
         user.fullName ?? undefined,
         user.imageUrl ?? undefined,
+        user.username ?? undefined,
       ).then((data) => {
         if (data) {
           if (typeof data.tos_accepted === 'boolean') {
@@ -184,6 +189,38 @@ function UserSync({ children }: { children: React.ReactNode }) {
       }).catch((err: any) => console.warn('UserSync failed:', err));
     }
   }, [setEventPreferencesCompleted, setMajorSpecific, setPreferredEventCategories, setPreferredEventInterests, setPreferredSocialMode, setPreferredTime, setSelectedMajor, setTOSAccepted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
+
+  // Deep link: maroonlife://add-friend/<targetUserId>
+  useEffect(() => {
+    if (!user?.id) return;
+    const handleUrl = async (url: string) => {
+      const match = url.match(/maroonlife:\/\/add-friend\/([^?#/]+)/);
+      if (!match) return;
+      const targetId = match[1];
+      if (targetId === user.id) return;
+      Alert.alert(
+        'Add Friend',
+        'Accept this friend invite and send a connection request?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Connect',
+            onPress: async () => {
+              try {
+                await addFriend(targetId, user.id);
+                Alert.alert('Connected!', 'Friend request sent successfully.');
+              } catch (e) {
+                Alert.alert('Error', 'Could not send friend request. Please try again.');
+              }
+            },
+          },
+        ],
+      );
+    };
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    Linking.getInitialURL().then((url) => { if (url) handleUrl(url); }).catch(() => {});
+    return () => sub.remove();
+  }, [user?.id]);
 
   return <>{children}</>;
 }
@@ -249,6 +286,7 @@ if (!publishableKey) {
 }
 
 const Stack = createStackNavigator();
+const GradesStackNav = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function withTabMotion(Component: React.ComponentType<any>, delay = 0) {
@@ -267,7 +305,36 @@ const AnimatedSocialScreen = withTabMotion(SocialHubScreen, 10);
 const AnimatedDiningScreen = withTabMotion(DiningDashboard, 30);
 const AnimatedClubsScreen = withTabMotion(ClubAccessScreen, 50);
 const AnimatedSettingsScreen = withTabMotion(Profile, 90);
-const AnimatedGradesTabScreen = withTabMotion(GradesScreen, 60);
+
+function GradesStack() {
+  const { COLORS } = useTheme();
+  return (
+    <GradesStackNav.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: COLORS.surface },
+        headerTintColor: COLORS.textPrimary,
+        headerTitleStyle: { fontWeight: '700' },
+        cardStyle: { backgroundColor: COLORS.background },
+      }}
+    >
+      <GradesStackNav.Screen
+        name="GradesHome"
+        component={GradesTabScreen}
+        options={{ headerShown: false }}
+      />
+      <GradesStackNav.Screen
+        name="ProfDetail"
+        component={ProfDetailScreen}
+        options={{ title: 'Professor Detail', headerBackTitle: 'Back' }}
+      />
+      <GradesStackNav.Screen
+        name="APEquivalency"
+        component={APEquivalencyScreen}
+        options={{ title: 'AP Credit Equivalencies', headerBackTitle: 'Back' }}
+      />
+    </GradesStackNav.Navigator>
+  );
+}
 
 function MainTabs(props: any) {
   const { COLORS } = useTheme();
@@ -321,8 +388,8 @@ function MainTabs(props: any) {
       if (item.id === 'Grades') {
         return {
           name: 'Grades',
-          component: AnimatedGradesTabScreen,
-          title: 'Grades',
+          component: GradesStack,
+          title: 'Academics',
           icon: BarChart2,
         };
       }
@@ -539,6 +606,10 @@ function RootNavigator() {
 
             <Stack.Screen name="NewCourseSearch" component={NewCourseSearchScreen} options={{ headerShown: true, title: 'Course Search' }} />
             <Stack.Screen name="NewCourseDetail" component={NewCourseDetailScreen} options={{ headerShown: true, title: 'Course Details' }} />
+            <Stack.Screen name="GradesScreen" component={GradesScreen} options={{ headerShown: true, title: 'Grade Distributions' }} />
+            {/* ProfDetail + APEquivalency also in root stack so they're reachable when GradesScreen is pushed outside the Grades tab */}
+            <Stack.Screen name="ProfDetail" component={ProfDetailScreen} options={{ headerShown: true, title: 'Professor Detail' }} />
+            <Stack.Screen name="APEquivalency" component={APEquivalencyScreen} options={{ headerShown: true, title: 'AP Credit Equivalencies' }} />
             <Stack.Screen name="ScheduleList" component={ScheduleListScreen} options={{ headerShown: true, title: 'My Schedules' }} />
             <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
             <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
@@ -578,7 +649,6 @@ function RootNavigator() {
             <Stack.Screen name="WeightTracker" component={WeightTrackerScreen} options={{ headerShown: false }} />
             <Stack.Screen name="TrackerHub" component={TrackerHubScreen} options={{ headerShown: false }} />
             <Stack.Screen name="StreakHub" component={StreakHubScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="GradesScreen" component={GradesScreen} options={{ headerShown: true, title: 'Grade Distributions' }} />
           </>
         ) : (
           <>

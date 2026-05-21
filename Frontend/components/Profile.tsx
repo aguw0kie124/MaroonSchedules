@@ -101,6 +101,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { StoryViewer } from './pings/StoryViewer';
 import DiningDashboard from './dining/DiningDashboard';
 import { CATEGORY_META, classifyCategory } from './events/EventUtils';
+import { Calendar } from 'react-native-calendars';
+
 const PROFILE_TABS = [
   { key: 'pings', icon: LayoutGrid },
   { key: 'saved', icon: Heart },
@@ -439,6 +441,7 @@ export function Profile() {
   const [showFriendsModal, setShowFriendsModal] = useState(false);
   const [showSavedPingsModal, setShowSavedPingsModal] = useState(false);
   const [composerVisible, setComposerVisible] = useState(false);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (route.params?.openComposer) {
@@ -798,7 +801,7 @@ export function Profile() {
         await removeFriend(targetId, user.id);
         updateSearchRelationshipState(targetId, 'none');
         await loadFriends();
-        Alert.alert('Connection removed', `${name || 'User'} has been removed from your friends.`);
+        Alert.alert('Friend removed', `${name || 'User'} has been removed from your friends.`);
         return;
       }
 
@@ -806,7 +809,7 @@ export function Profile() {
         await removeFriend(targetId, user.id);
         updateSearchRelationshipState(targetId, 'none');
         await loadFriends();
-        Alert.alert('Request canceled', `Your connection request to ${name || 'this user'} was canceled.`);
+        Alert.alert('Request canceled', `Your friend request to ${name || 'this user'} was canceled.`);
         return;
       }
 
@@ -815,22 +818,22 @@ export function Profile() {
       if (action === 'accepted' || relationshipStatus === 'incoming_pending') {
         updateSearchRelationshipState(targetId, 'accepted');
         await loadFriends();
-        Alert.alert('Connection accepted', `${name || 'User'} is now connected with you.`);
+        Alert.alert('Now Friends!', `${name || 'User'} is now your friend.`);
         return;
       }
       if (action === 'already_connected') {
         updateSearchRelationshipState(targetId, 'accepted');
         await loadFriends();
-        Alert.alert('Already connected', `${name || 'User'} is already in your friends list.`);
+        Alert.alert('Already Friends', `${name || 'User'} is already in your friends list.`);
         return;
       }
       updateSearchRelationshipState(targetId, 'outgoing_pending');
       await loadFriends();
       Alert.alert(
-        action === 'request_pending' ? 'Request pending' : 'Request sent',
+        action === 'request_pending' ? 'Already Sent' : 'Request Sent',
         action === 'request_pending'
-          ? `Your connection request to ${name || 'this user'} is still pending.`
-          : `${name || 'User'} can accept your connection request from their profile.`,
+          ? `Your friend request to ${name || 'this user'} is still pending.`
+          : `${name || 'User'} will be notified of your friend request.`,
       );
     } catch (err) {
       console.warn('Failed to update connection', err);
@@ -1474,36 +1477,55 @@ export function Profile() {
     return <View style={styles.section}>{content}</View>;
   }
 
-  const renderConnectionRow = (item: any) => (
-    <View key={item.id} style={styles.modalFriendRow}>
+  const renderConnectionRow = (item: any) => {
+    const displayName = item.full_name || item.name || 'Aggie User';
+    const subtitle = item.username ? `@${item.username}` : item.major || null;
+    return (
+    <Pressable
+      key={item.id}
+      style={styles.modalFriendRow}
+      onPress={() => {
+        setShowFriendsModal(false);
+        navigation.navigate('PublicProfile', {
+          targetUserId: item.id,
+          targetUserName: displayName,
+          targetUserImage: item.profile_image_url || null,
+          isAnonymous: false,
+        });
+      }}
+    >
       <View style={styles.listAvatar}>
         {item.profile_image_url ? (
           <Image source={{ uri: item.profile_image_url }} style={styles.listAvatarImage} />
         ) : (
           <View style={[styles.listAvatarImage, { backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' }]}>
-            <Text style={{ color: COLORS.textPrimary, fontWeight: '700' }}>{item.name?.[0] || 'U'}</Text>
+            <Text style={{ color: COLORS.textPrimary, fontWeight: '700' }}>{displayName?.[0] || 'U'}</Text>
           </View>
         )}
       </View>
       <View style={{ flex: 1, marginLeft: 12 }}>
-        <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 15 }}>{item.username || item.name}</Text>
-        <Text style={{ color: COLORS.textTertiary, fontSize: 13 }} numberOfLines={1}>
-          {item.major || item.name}
-        </Text>
+        <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 15 }}>{displayName}</Text>
+        {subtitle ? (
+          <Text style={{ color: COLORS.textTertiary, fontSize: 13 }} numberOfLines={1}>{subtitle}</Text>
+        ) : null}
       </View>
       <Pressable
         style={[
           styles.friendCardActionButton,
           { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }
         ]}
-        onPress={() => handleConnectionAction(item.id, item.name, getConnectionStatus(item))}
+        onPress={(e) => {
+          e.stopPropagation();
+          handleConnectionAction(item.id, item.name, getConnectionStatus(item));
+        }}
       >
         <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 13 }}>
           {getConnectionActionLabel(item)}
         </Text>
       </Pressable>
-    </View>
-  );
+    </Pressable>
+    );
+  };
   
   const renderFriendsModal = () => (
     <Modal
@@ -1691,48 +1713,152 @@ export function Profile() {
   };
 
   const renderSavedEventsTab = () => {
-    if (!scheduledEvents.length) {
-      return (
-        <View style={styles.emptyTabState}>
-          <Heart size={34} color={COLORS.textTertiary} strokeWidth={1.8} />
-          <Text style={styles.emptyTabTitle}>No saved events yet</Text>
-          <Text style={styles.emptyTabSubtitle}>Events you add to your calendar will show up here.</Text>
-          <Pressable style={styles.emptyTabButton} onPress={() => openEventsTab()}>
-            <Text style={styles.emptyTabButtonText}>Browse Events</Text>
-          </Pressable>
-        </View>
-      );
+    // Build markedDates from scheduledEvents
+    const markedDates: Record<string, any> = {};
+    scheduledEvents.forEach((event) => {
+      const dateStr = event.date_iso
+        ? event.date_iso.slice(0, 10)
+        : event.date_ts
+        ? new Date(event.date_ts * 1000).toISOString().slice(0, 10)
+        : null;
+      if (!dateStr) return;
+      const eventCategory = classifyCategory(event as any);
+      const eventMeta = CATEGORY_META[eventCategory];
+      const dot = { key: event.id, color: eventMeta?.cardTint || COLORS.primary };
+      if (!markedDates[dateStr]) {
+        markedDates[dateStr] = { dots: [dot] };
+      } else {
+        markedDates[dateStr].dots = [...(markedDates[dateStr].dots || []), dot];
+      }
+    });
+
+    // Highlight selected date
+    if (selectedCalendarDate) {
+      markedDates[selectedCalendarDate] = {
+        ...(markedDates[selectedCalendarDate] || {}),
+        selected: true,
+        selectedColor: COLORS.primary,
+        selectedTextColor: '#FFFFFF',
+        dots: markedDates[selectedCalendarDate]?.dots || [],
+      };
     }
 
-    return (
-      <View style={styles.resourceList}>
-        {scheduledEvents.map((event) => {
-          const eventCategory = classifyCategory(event as any);
-          const eventMeta = CATEGORY_META[eventCategory];
-          const EventIcon = eventMeta.icon;
+    // Events for the selected date
+    const selectedDayEvents = selectedCalendarDate
+      ? scheduledEvents.filter((event) => {
+          const dateStr = event.date_iso
+            ? event.date_iso.slice(0, 10)
+            : event.date_ts
+            ? new Date(event.date_ts * 1000).toISOString().slice(0, 10)
+            : null;
+          return dateStr === selectedCalendarDate;
+        })
+      : [];
 
-          return (
-            <Pressable
-              key={event.id}
-              style={styles.resourceListRow}
-              onPress={() => openEventsTab({ openEventDetail: event })}
-            >
-              <View style={[styles.resourceListIconWrap, { backgroundColor: eventMeta.cardTint }]}>
-                <EventIcon size={19} color="#FFFFFF" />
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    return (
+      <View style={{ paddingBottom: 32 }}>
+        <Calendar
+          markingType="multi-dot"
+          markedDates={markedDates}
+          current={selectedCalendarDate || todayStr}
+          onDayPress={(day: any) => {
+            setSelectedCalendarDate((prev) => (prev === day.dateString ? null : day.dateString));
+          }}
+          theme={{
+            backgroundColor: COLORS.background,
+            calendarBackground: COLORS.background,
+            textSectionTitleColor: COLORS.textTertiary,
+            selectedDayBackgroundColor: COLORS.primary,
+            selectedDayTextColor: '#FFFFFF',
+            todayTextColor: COLORS.primary,
+            dayTextColor: COLORS.textPrimary,
+            textDisabledColor: COLORS.textTertiary,
+            dotColor: COLORS.primary,
+            selectedDotColor: '#FFFFFF',
+            arrowColor: COLORS.primary,
+            monthTextColor: COLORS.textPrimary,
+            indicatorColor: COLORS.primary,
+            textDayFontWeight: '600',
+            textMonthFontWeight: '800',
+            textDayHeaderFontWeight: '700',
+            textDayFontSize: 14,
+            textMonthFontSize: 16,
+            textDayHeaderFontSize: 12,
+          }}
+          style={{
+            borderRadius: 20,
+            marginHorizontal: 16,
+            marginTop: 8,
+            marginBottom: 4,
+            overflow: 'hidden',
+          }}
+        />
+
+        {/* Selected date event list */}
+        {selectedCalendarDate ? (
+          <View style={{ marginTop: 16 }}>
+            <Text style={[
+              styles.resourceListTitle,
+              { paddingHorizontal: 20, marginBottom: 10, fontSize: 13, color: COLORS.textTertiary, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' }
+            ]}>
+              {new Date(selectedCalendarDate + 'T12:00:00').toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
+            </Text>
+            {selectedDayEvents.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 24, opacity: 0.6 }}>
+                <CalendarDays size={28} color={COLORS.textTertiary} strokeWidth={1.5} />
+                <Text style={{ color: COLORS.textTertiary, marginTop: 8, fontSize: 13, fontWeight: '500' }}>No events on this day</Text>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.resourceListTitle} numberOfLines={2}>{event.title}</Text>
-                <Text style={styles.resourceListMeta} numberOfLines={1}>
-                  {formatEventDate(event.date_iso || event.date_ts)}{event.location ? ` • ${event.location}` : ''}
-                </Text>
+            ) : (
+              <View style={styles.resourceList}>
+                {selectedDayEvents.map((event) => {
+                  const eventCategory = classifyCategory(event as any);
+                  const eventMeta = CATEGORY_META[eventCategory];
+                  const EventIcon = eventMeta.icon;
+                  return (
+                    <Pressable
+                      key={event.id}
+                      style={styles.resourceListRow}
+                      onPress={() => openEventsTab({ openEventDetail: event })}
+                    >
+                      <View style={[styles.resourceListIconWrap, { backgroundColor: eventMeta.cardTint }]}>
+                        <EventIcon size={19} color="#FFFFFF" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.resourceListTitle} numberOfLines={2}>{event.title}</Text>
+                        <Text style={styles.resourceListMeta} numberOfLines={1}>
+                          {formatEventDate(event.date_iso || event.date_ts)}{event.location ? ` • ${event.location}` : ''}
+                        </Text>
+                      </View>
+                      <ChevronRight size={17} color={COLORS.textTertiary} />
+                    </Pressable>
+                  );
+                })}
               </View>
-              <ChevronRight size={17} color={COLORS.textTertiary} />
-            </Pressable>
-          );
-        })}
+            )}
+          </View>
+        ) : (
+          /* No date selected — show all upcoming or empty state */
+          scheduledEvents.length === 0 ? (
+            <View style={styles.emptyTabState}>
+              <Heart size={34} color={COLORS.textTertiary} strokeWidth={1.8} />
+              <Text style={styles.emptyTabTitle}>No saved events yet</Text>
+              <Text style={styles.emptyTabSubtitle}>Events you add to your calendar will show up here.</Text>
+              <Pressable style={styles.emptyTabButton} onPress={() => openEventsTab()}>
+                <Text style={styles.emptyTabButtonText}>Browse Events</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center', paddingTop: 20, opacity: 0.5 }}>
+              <Text style={{ color: COLORS.textTertiary, fontSize: 13, fontWeight: '600' }}>Tap a date to see events</Text>
+            </View>
+          )
+        )}
       </View>
     );
   };
+
 
   const renderSchedulesTab = () => {
     if (isLoadingSchedules) {

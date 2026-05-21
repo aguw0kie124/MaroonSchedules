@@ -210,6 +210,7 @@ async def get_public_profile(clerk_id: str, auth_user_id: Optional[str] = Depend
     return {
         "clerk_id": profile["clerk_id"],
         "full_name": profile.get("full_name") or "Aggie User",
+        "username": profile.get("username") or None,
         "profile_image_url": profile.get("profile_image_url"),
         "major": profile.get("major"),
         "graduation_year": profile.get("graduation_year"),
@@ -839,9 +840,9 @@ async def remove_friend_for_user(clerk_id: str, target_id: str, auth_user_id: st
     try:
         _ensure_social_schema()
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only remove friends from your own account")
-        removed = user_repository.remove_friend(clerk_id, target_id)
-        if not removed:
-            raise HTTPException(status_code=404, detail="Friendship not found")
+        user_repository.remove_friend(clerk_id, target_id)
+        # Treat as success whether or not a row was deleted — the desired
+        # state (not friends) is already true if the row didn't exist.
         return {"status": "success"}
     except HTTPException:
         raise
@@ -852,16 +853,44 @@ async def remove_friend_for_user(clerk_id: str, target_id: str, auth_user_id: st
 @router.get("/users/{clerk_id}/friends/search")
 async def search_users_for_friends(
     clerk_id: str,
-    query: str = Query(..., min_length=1),
-    limit: int = Query(10, ge=1, le=25),
+    query: str = Query("", min_length=0),
+    limit: int = Query(30, ge=1, le=50),
     auth_user_id: str = Depends(require_auth),
 ):
     try:
         _ensure_social_schema()
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only search friends for your own account")
-        return user_repository.search_users(clerk_id, query, limit=limit)
+        return user_repository.search_users(clerk_id, query or "", limit=limit)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+
+
+
+class PushTokenRequest(BaseModel):
+    token: str | None = None
+
+
+@router.post("/users/{clerk_id}/push-token")
+@limiter.limit("10/minute")
+async def register_push_token(
+    request: Request,
+    clerk_id: str,
+    body: PushTokenRequest = Body(...),
+    auth_user_id: str = Depends(require_auth),
+):
+    """Register (or clear) an Expo push token for background notifications."""
+    try:
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only register your own push token")
+        user_repository.save_push_token(clerk_id, body.token or None)
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 
 @router.post("/reports")
 @limiter.limit("5/minute")

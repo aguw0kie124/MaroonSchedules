@@ -77,3 +77,29 @@ export interface GradeSearchResult {
     stats: CourseStats;
     sections: InstructorSectionStat[];
 }
+
+/** One entry per unique instructor — aggregated across all their sections for a course */
+export interface ProfSummary {
+    instructor: string;
+    avgGpa: number;
+    totalStudents: number;
+    sectionCount: number;
+    sections: InstructorSectionStat[];
+    // Aggregated grade counts
+    a_count: number;
+    b_count: number;
+    c_count: number;
+    d_count: number;
+    f_count: number;
+    i_count: number;
+    q_count: number;
+    s_count: number;
+    u_count: number;
+    x_count: number;
+    percentA: number;
+    percentB: number;
+    percentC: number;
+    percentD: number;
+    percentF: number;
+    percentQ: number;
+}

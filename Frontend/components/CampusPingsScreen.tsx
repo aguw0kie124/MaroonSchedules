@@ -82,6 +82,7 @@ import {
   deletePing,
   getComments,
   getFriends,
+  getFriendRequests,
   getPingFeedPage,
   type FeedCursor,
   reportContent,
@@ -89,6 +90,8 @@ import {
   toggleVote,
   uploadMediaImage,
 } from '../services/socialFeedService';
+import { FindFriendsModal } from './social/FindFriendsModal';
+import { FriendRequestsInboxModal } from './social/FriendRequestsInboxModal';
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
 import { useSessionStore } from '../store/sessionStore';
 import { resolveDisplayName } from '../utils/userUtils';
@@ -595,6 +598,8 @@ export function CampusPingsScreen() {
 
   const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
   const [activeCommentsPing, setActiveCommentsPing] = useState<PingCard | null>(null);
+  const [showInboxModal, setShowInboxModal] = useState(false);
+  const [showFindFriendsModal, setShowFindFriendsModal] = useState(false);
 
   const userPings = useMemo(() => flattenPingFeedPages(pagedUserPings), [pagedUserPings]);
   const loadedPingPageCount = pagedUserPings?.pages?.length || 0;
@@ -608,6 +613,19 @@ export function CampusPingsScreen() {
     enabled: Boolean(user?.id),
     staleTime: 1000 * 60,
   });
+
+  const { data: friendRequests = { incoming: [], outgoing: [] }, refetch: refetchFriendRequests } = useQuery({
+    queryKey: ['campus-ping-friend-requests', API_URL, user?.id],
+    queryFn: async () => {
+      if (!user?.id) return { incoming: [], outgoing: [] };
+      return await getFriendRequests(user.id);
+    },
+    enabled: Boolean(user?.id),
+    refetchInterval: 30000,
+    staleTime: 1000 * 30,
+  });
+
+  const incomingRequestCount = (friendRequests?.incoming || []).length;
 
   const friendIds = useMemo(() => {
     return new Set(
@@ -1649,25 +1667,62 @@ export function CampusPingsScreen() {
           </View>
           <Text style={styles.heroTitle}>Campus Pulse</Text>
         </View>
-        <TourTarget
-          name="crowdping-cta"
-          assistAction={() => {
-            advanceStep('crowdping-cta');
-          }}
-        >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {/* Find Friends Button */}
           <Pressable
             style={styles.composeFab}
-            onPress={() => {
-              if (activeTargetName === 'crowdping-cta') {
-                advanceStep('crowdping-cta');
-                return;
-              }
-              openComposer();
+            onPress={() => setShowFindFriendsModal(true)}
+            accessibilityLabel="Find friends"
+          >
+            <Search size={18} color={COLORS.textPrimary} />
+          </Pressable>
+          {/* Inbox Button with badge */}
+          <Pressable
+            style={styles.composeFab}
+            onPress={() => setShowInboxModal(true)}
+            accessibilityLabel="Friend requests inbox"
+          >
+            <Users size={18} color={COLORS.textPrimary} />
+            {incomingRequestCount > 0 && (
+              <View style={{
+                position: 'absolute',
+                top: -4,
+                right: -4,
+                backgroundColor: '#D05050',
+                borderRadius: 8,
+                minWidth: 16,
+                height: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingHorizontal: 3,
+              }}>
+                <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '800' }}>
+                  {incomingRequestCount > 9 ? '9+' : incomingRequestCount}
+                </Text>
+              </View>
+            )}
+          </Pressable>
+          {/* Compose Button */}
+          <TourTarget
+            name="crowdping-cta"
+            assistAction={() => {
+              advanceStep('crowdping-cta');
             }}
           >
-            <Plus size={18} color={COLORS.textPrimary} />
-          </Pressable>
-        </TourTarget>
+            <Pressable
+              style={styles.composeFab}
+              onPress={() => {
+                if (activeTargetName === 'crowdping-cta') {
+                  advanceStep('crowdping-cta');
+                  return;
+                }
+                openComposer();
+              }}
+            >
+              <Plus size={18} color={COLORS.textPrimary} />
+            </Pressable>
+          </TourTarget>
+        </View>
       </View>
 
       {isManuallyRefreshing ? (
@@ -2214,6 +2269,19 @@ export function CampusPingsScreen() {
         }
         onClose={() => setActiveCommentsPing(null)}
         onCommentPosted={handleCommentPosted}
+      />
+
+      <FindFriendsModal
+        visible={showFindFriendsModal}
+        onClose={() => setShowFindFriendsModal(false)}
+      />
+
+      <FriendRequestsInboxModal
+        visible={showInboxModal}
+        onClose={() => setShowInboxModal(false)}
+        incomingRequests={friendRequests?.incoming || []}
+        outgoingRequests={friendRequests?.outgoing || []}
+        onRefresh={() => refetchFriendRequests()}
       />
       </WallpaperWrapper>
     </View>

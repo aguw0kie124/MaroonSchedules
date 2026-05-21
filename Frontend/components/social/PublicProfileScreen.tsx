@@ -97,7 +97,7 @@ export default function PublicProfileScreen() {
     if (relationshipStatus === 'accepted') {
       return {
         icon: UserCheck,
-        label: 'Connected',
+        label: 'Friends',
         tint: COLORS.primary,
         backgroundColor: `${COLORS.primary}20`,
       };
@@ -120,7 +120,7 @@ export default function PublicProfileScreen() {
     }
     return {
       icon: UserPlus,
-      label: 'Connect',
+      label: 'Add Friend',
       tint: COLORS.textPrimary,
       backgroundColor: undefined,
     };
@@ -321,29 +321,31 @@ export default function PublicProfileScreen() {
       if (relationshipStatus === 'accepted' || relationshipStatus === 'outgoing_pending') {
         await removeFriend(targetUserId, currentUser.id);
         Alert.alert(
-          relationshipStatus === 'accepted' ? 'Connection removed' : 'Request canceled',
+          relationshipStatus === 'accepted' ? 'Friend removed' : 'Request canceled',
           relationshipStatus === 'accepted'
-            ? `You are no longer connected with ${profile?.full_name || targetUserName || 'this user'}.`
-            : `Your connection request to ${profile?.full_name || targetUserName || 'this user'} was canceled.`,
+            ? `You are no longer friends with ${profile?.full_name || profile?.username || targetUserName || 'this user'}.`
+            : `Your friend request to ${profile?.full_name || profile?.username || targetUserName || 'this user'} was canceled.`,
         );
       } else {
         const result = await addFriend(targetUserId, currentUser.id);
         const action = result?.friendship?.action;
         if (action === 'accepted') {
-          Alert.alert('Connection accepted', `${profile?.full_name || targetUserName || 'This user'} is now connected with you.`);
+          Alert.alert('Now Friends!', `${profile?.full_name || profile?.username || targetUserName || 'This user'} is now your friend.`);
         } else if (action === 'request_pending') {
-          Alert.alert('Request pending', `Your connection request to ${profile?.full_name || targetUserName || 'this user'} is still pending.`);
+          Alert.alert('Already Sent', `Your friend request to ${profile?.full_name || profile?.username || targetUserName || 'this user'} is still pending.`);
         } else if (action === 'already_connected') {
-          Alert.alert('Already connected', `You are already connected with ${profile?.full_name || targetUserName || 'this user'}.`);
+          Alert.alert('Already Friends', `You are already friends with ${profile?.full_name || profile?.username || targetUserName || 'this user'}.`);
         } else {
-          Alert.alert('Request sent', `${profile?.full_name || targetUserName || 'This user'} can accept your connection request from their profile.`);
+          Alert.alert('Request Sent', `${profile?.full_name || profile?.username || targetUserName || 'This user'} will be notified of your friend request.`);
         }
       }
       await refetchProfile();
       queryClient.invalidateQueries({ queryKey: ['campus-ping-friends'] });
+      queryClient.invalidateQueries({ queryKey: ['campus-ping-friend-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['public-profile', targetUserId] });
     } catch (e) {
-      console.warn('Failed to toggle connection status', e);
-      Alert.alert('Error', 'Could not update connection status. Try again later.');
+      console.warn('Failed to toggle friend status', e);
+      Alert.alert('Error', 'Could not update friend status. Try again later.');
     }
   };
 
@@ -433,7 +435,10 @@ export default function PublicProfileScreen() {
              </View>
           </View>
 
-          <Text style={currentStyles.nameText}>{profile?.full_name || 'Aggie User'}</Text>
+          <Text style={currentStyles.nameText}>{profile?.full_name || profile?.username || 'Aggie User'}</Text>
+          {profile?.username ? (
+            <Text style={[currentStyles.bioText, { opacity: 0.6, marginTop: 2, marginBottom: profile?.bio ? 0 : 4 }]}>@{profile.username}</Text>
+          ) : null}
           {profile?.bio ? <Text style={currentStyles.bioText}>{profile.bio}</Text> : null}
 
           {/* Stats & Action Row */}

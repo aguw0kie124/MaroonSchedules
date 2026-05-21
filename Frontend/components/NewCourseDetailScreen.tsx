@@ -1,9 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, Modal, Pressable } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, Modal, Pressable, ScrollView, Alert } from 'react-native';
 import { useRoute, useNavigation, CommonActions } from '@react-navigation/native';
 import { fetchCourseById, fetchSchedules, addSectionToSchedule } from '../api/client';
 import { useTheme, Card, SectionRow, PrimaryButton } from './SharedUI';
 import { useUser } from '@clerk/clerk-expo';
+import { Calendar, ChevronRight } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Parse a prereq string into alternating plain-text and course-code tokens
+// e.g. "CSCE 121 or MATH 151" → [{type:'course', value:'CSCE 121'}, {type:'text', value:' or '}, ...]
+function parsePrereqTokens(prereq: string): Array<{ type: 'text' | 'course'; value: string }> {
+    const coursePattern = /([A-Z]{2,5}\s+\d{3}[A-Z0-9]*)/g;
+    const tokens: Array<{ type: 'text' | 'course'; value: string }> = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = coursePattern.exec(prereq)) !== null) {
+        if (match.index > lastIndex) {
+            tokens.push({ type: 'text', value: prereq.slice(lastIndex, match.index) });
+        }
+        tokens.push({ type: 'course', value: match[0] });
+        lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < prereq.length) {
+        tokens.push({ type: 'text', value: prereq.slice(lastIndex) });
+    }
+    return tokens;
+}
 
 export function NewCourseDetailScreen() {
     const { COLORS } = useTheme();
@@ -18,7 +40,7 @@ export function NewCourseDetailScreen() {
 
     const [modalVisible, setModalVisible] = useState(false);
     const [schedules, setSchedules] = useState<any[]>([]);
-    const [selectedSection, setSelectedSection] = useState<string | null>(null);
+    const [selectedSection, setSelectedSection] = useState<any>(null);
     const [isAdding, setIsAdding] = useState(false);
 
     useEffect(() => {
@@ -42,8 +64,30 @@ export function NewCourseDetailScreen() {
     };
 
     const handleAddSectionClick = (sectionId: string) => {
-        setSelectedSection(sectionId);
-        setModalVisible(true);
+        // Find the full section object from the course data
+        const sectionObj = (course?.sections || []).find((s: any) => s.id === sectionId);
+
+        // If the section is closed, show a warning first
+        if (sectionObj && !sectionObj.isOpen) {
+            Alert.alert(
+                'Section Closed',
+                'This section is currently closed. Are you sure you want to add it to your schedule?',
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                        text: 'Add Anyway',
+                        style: 'destructive',
+                        onPress: () => {
+                            setSelectedSection(sectionObj);
+                            setModalVisible(true);
+                        },
+                    },
+                ]
+            );
+        } else {
+            setSelectedSection(sectionObj || { id: sectionId });
+            setModalVisible(true);
+        }
     };
 
     const confirmAddToSchedule = async (scheduleId: string) => {
@@ -51,11 +95,23 @@ export function NewCourseDetailScreen() {
         
         setIsAdding(true);
         try {
-            await addSectionToSchedule(scheduleId, selectedSection, userId);
+            await addSectionToSchedule(scheduleId, selectedSection.id, userId);
+
+            // Cache the full section object locally so ScheduleDetailScreen can display it
+            try {
+                await AsyncStorage.setItem(
+                    `section_cache_${selectedSection.id}`,
+                    JSON.stringify(selectedSection),
+                );
+            } catch (_) { /* non-critical */ }
+
             setModalVisible(false);
             
             // Show success message and stay on the screen
-            alert("Section added to your schedule!");
+            const sectionLabel = selectedSection.dept
+                ? `${selectedSection.dept} ${selectedSection.courseNumber} - Sec ${selectedSection.sectionNumber}`
+                : `Section ${selectedSection.sectionNumber || selectedSection.id}`;
+            alert(`${sectionLabel} added to your schedule!`);
         } catch (e) {
             alert("Failed to add section.");
         } finally {
@@ -87,11 +143,64 @@ export function NewCourseDetailScreen() {
                 </View>
                 <Text style={[styles.subtitle, { marginBottom: course.prerequisites ? 6 : 0 }]}>{course.description || "No description available."}</Text>
                 {course.prerequisites && (
-                    <Text style={[styles.subtitle, { color: '#FF9F0A', fontWeight: '600' }]}>
-                        Prerequisites: {course.prerequisites}
-                    </Text>
+                    <View style={{ marginTop: 6 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.textTertiary, letterSpacing: 0.4, marginBottom: 6, textTransform: 'uppercase' }}>Prerequisites</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                            {parsePrereqTokens(course.prerequisites).map((token, idx) =>
+                                token.type === 'course' ? (
+                                    <Pressable
+                                        key={idx}
+                                        onPress={() => navigation.navigate('APEquivalency', { initialFilter: token.value })}
+                                        style={({ pressed }) => ({
+                                            backgroundColor: pressed ? COLORS.primary + '40' : COLORS.primary + '18',
+                                            borderRadius: 8,
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 5,
+                                            borderWidth: 1,
+                                            borderColor: COLORS.primary + '40',
+                                        })}
+                                    >
+                                        <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.primary }}>
+                                            {token.value}
+                                        </Text>
+                                    </Pressable>
+                                ) : (
+                                    <Text key={idx} style={{ fontSize: 13, color: COLORS.textSecondary }}>
+                                        {token.value}
+                                    </Text>
+                                )
+                            )}
+                        </View>
+                        <Text style={{ fontSize: 11, color: COLORS.textTertiary, marginTop: 6 }}>
+                            Tap a course to see its AP equivalency
+                        </Text>
+                    </View>
                 )}
             </View>
+
+            {/* Schedule Planner button */}
+            <Pressable
+                onPress={() => navigation.navigate('ScheduleList')}
+                style={({ pressed }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                    marginHorizontal: 16,
+                    marginTop: 16,
+                    backgroundColor: pressed ? COLORS.primary + '30' : COLORS.primary + '12',
+                    borderRadius: 12,
+                    paddingVertical: 13,
+                    paddingHorizontal: 16,
+                    borderWidth: 1,
+                    borderColor: COLORS.primary + '30',
+                })}
+            >
+                <Calendar size={16} color={COLORS.primary} />
+                <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.primary, flex: 1 }}>
+                    View Schedule Calendar
+                </Text>
+                <ChevronRight size={16} color={COLORS.primary} />
+            </Pressable>
 
             <FlatList
                 data={course.sections || []}

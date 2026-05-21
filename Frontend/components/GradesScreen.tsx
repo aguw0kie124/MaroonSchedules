@@ -1,35 +1,37 @@
 // Frontend/components/GradesScreen.tsx
 // Grade-distribution search screen for the MaroonSchedules app.
 //
-// Shows: subject + course# search → summary card → section list → detail modal
+// Shows: subject + course# search → summary card → deduplicated prof list → ProfDetailScreen
 
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
     View,
     Text,
     TextInput,
     Pressable,
     FlatList,
-    Modal,
-    ScrollView,
     ActivityIndicator,
     StyleSheet,
     SafeAreaView,
     KeyboardAvoidingView,
     Platform,
+    useWindowDimensions,
+    ScrollView,
 } from 'react-native';
-import { BarChart2, X, ChevronRight, GraduationCap, Star, AlertCircle, Search, ArrowUpDown } from 'lucide-react-native';
+import { BarChart2, X, ChevronRight, GraduationCap, Star, AlertCircle, Search, ArrowUpDown, TrendingUp } from 'lucide-react-native';
 
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import { useTheme } from './SharedUI';
 import { searchCourseGrades } from '../services/grades';
 import { gpaColor } from '../utils/grades';
 import { requestJson } from '../api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { findApForCourse } from '../data/apEquivalencies';
 import {
     CourseStats,
     GradeSearchResult,
     InstructorSectionStat,
+    ProfSummary,
 } from '../types/grades';
 
 // ──────────────────────────────────────────────────────────────
@@ -37,8 +39,45 @@ import {
 // ──────────────────────────────────────────────────────────────
 
 type ScreenState = 'idle' | 'loading' | 'results' | 'error';
-type SortKey = 'gpa' | 'rating' | 'name';
+type SortKey = 'gpa' | 'rating' | 'name' | 'students';
 type SortDirection = 'asc' | 'desc';
+
+// ── Group sections by instructor → ProfSummary ──────────────────
+function groupByProfessor(sections: InstructorSectionStat[]): ProfSummary[] {
+    const map = new Map<string, InstructorSectionStat[]>();
+    for (const s of sections) {
+        const key = (s.instructor || 'STAFF').toUpperCase().trim();
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(s);
+    }
+    return [...map.entries()].map(([key, secs]) => {
+        const total = secs.reduce((sum, s) => sum + s.enrollment, 0);
+        const a = secs.reduce((sum, s) => sum + s.a_count, 0);
+        const b = secs.reduce((sum, s) => sum + s.b_count, 0);
+        const c = secs.reduce((sum, s) => sum + s.c_count, 0);
+        const d = secs.reduce((sum, s) => sum + s.d_count, 0);
+        const f = secs.reduce((sum, s) => sum + s.f_count, 0);
+        const i = secs.reduce((sum, s) => sum + s.i_count, 0);
+        const q = secs.reduce((sum, s) => sum + s.q_count, 0);
+        const sv = secs.reduce((sum, s) => sum + s.s_count, 0);
+        const u = secs.reduce((sum, s) => sum + s.u_count, 0);
+        const x = secs.reduce((sum, s) => sum + s.x_count, 0);
+        const weightedGpa = secs.reduce((sum, s) => sum + s.avgGpa * s.enrollment, 0);
+        const avgGpa = total > 0 ? weightedGpa / total : 0;
+        const safe = (n: number) => total > 0 ? (n / total) * 100 : 0;
+        return {
+            instructor: secs[0].instructor || 'STAFF',
+            avgGpa,
+            totalStudents: total,
+            sectionCount: secs.length,
+            sections: secs,
+            a_count: a, b_count: b, c_count: c, d_count: d, f_count: f,
+            i_count: i, q_count: q, s_count: sv, u_count: u, x_count: x,
+            percentA: safe(a), percentB: safe(b), percentC: safe(c),
+            percentD: safe(d), percentF: safe(f), percentQ: safe(q),
+        } as ProfSummary;
+    });
+}
 
 // ──────────────────────────────────────────────────────────────
 // Sub-components
@@ -125,7 +164,7 @@ function CourseSummaryCard({
     );
 }
 
-// Prerequisites card shown after course summary
+// Prerequisites card — tappable course chips that navigate to APEquivalency
 function PrerequisitesCard({
     prerequisites,
     COLORS,
@@ -133,7 +172,21 @@ function PrerequisitesCard({
     prerequisites: string;
     COLORS: any;
 }) {
+    const navigation = useNavigation<any>();
     if (!prerequisites || prerequisites === 'None') return null;
+
+    // Parse prereq string into text + course-code tokens
+    const coursePattern = /([A-Z]{2,5}\s+\d{3}[A-Z0-9]*)/g;
+    const tokens: Array<{ type: 'text' | 'course'; value: string }> = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = coursePattern.exec(prerequisites)) !== null) {
+        if (match.index > lastIndex) tokens.push({ type: 'text', value: prerequisites.slice(lastIndex, match.index) });
+        tokens.push({ type: 'course', value: match[0] });
+        lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < prerequisites.length) tokens.push({ type: 'text', value: prerequisites.slice(lastIndex) });
+
     return (
         <View style={{
             marginHorizontal: 16,
@@ -150,9 +203,183 @@ function PrerequisitesCard({
                     Prerequisites
                 </Text>
             </View>
-            <Text style={{ fontSize: 14, color: COLORS.textSecondary, lineHeight: 20 }}>
-                {prerequisites}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                {tokens.map((token, idx) =>
+                    token.type === 'course' ? (
+                        <Pressable
+                            key={idx}
+                            onPress={() => navigation.navigate('APEquivalency', { initialFilter: token.value })}
+                            style={({ pressed }) => ({
+                                backgroundColor: pressed ? '#FF9F0A40' : '#FF9F0A18',
+                                borderRadius: 8,
+                                paddingHorizontal: 10,
+                                paddingVertical: 5,
+                                borderWidth: 1,
+                                borderColor: '#FF9F0A40',
+                            })}
+                        >
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: '#FF9F0A' }}>{token.value}</Text>
+                        </Pressable>
+                    ) : (
+                        <Text key={idx} style={{ fontSize: 13, color: COLORS.textSecondary }}>{token.value}</Text>
+                    )
+                )}
+            </View>
+            <Text style={{ fontSize: 11, color: COLORS.textTertiary, marginTop: 6 }}>
+                Tap a course to see its AP credit equivalency
             </Text>
+        </View>
+    );
+}
+
+// GPA-over-time bar chart — uses fixed pixel widths to work inside FlatList
+function GpaTimelineChart({
+    sections,
+    COLORS,
+    title,
+    chartWidth,
+}: {
+    sections: InstructorSectionStat[];
+    COLORS: any;
+    title?: string;
+    chartWidth: number;
+}) {
+    if (!sections || sections.length === 0) return null;
+
+    const byYear = new Map<number, { total: number; weightedSum: number }>();
+    for (const s of sections) {
+        if (!s.year || !s.avgGpa) continue;
+        const cur = byYear.get(s.year) || { total: 0, weightedSum: 0 };
+        cur.total += s.enrollment || 1;
+        cur.weightedSum += s.avgGpa * (s.enrollment || 1);
+        byYear.set(s.year, cur);
+    }
+    const data = [...byYear.entries()]
+        .map(([year, v]) => ({ year, avgGpa: v.total > 0 ? v.weightedSum / v.total : 0 }))
+        .sort((a, b) => a.year - b.year);
+    if (data.length === 0) return null;
+
+    const BAR_MAX_HEIGHT = 90;
+    const GAP = 4;
+    const innerWidth = chartWidth - 28; // 14px padding each side
+    const barW = Math.max(16, (innerWidth - GAP * (data.length - 1)) / data.length);
+
+    const maxGpa = 4.0;
+    const allGpas = data.map(d => d.avgGpa);
+    const minGpaRaw = Math.min(...allGpas);
+    const minGpa = Math.max(0, minGpaRaw - 0.5);
+    const range = maxGpa - minGpa || 0.01;
+
+    return (
+        <View style={{
+            marginHorizontal: 16,
+            marginBottom: 8,
+            backgroundColor: COLORS.surfaceElevated,
+            borderRadius: 14,
+            padding: 14,
+            borderWidth: 1,
+            borderColor: COLORS.border,
+        }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <TrendingUp size={16} color={COLORS.primary} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textPrimary }} numberOfLines={1}>
+                    {title || 'Avg GPA by Year'}
+                </Text>
+            </View>
+            {/* Scroll horizontally if many years */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: GAP, height: BAR_MAX_HEIGHT + 36, paddingBottom: 4 }}>
+                    {data.map(({ year, avgGpa }) => {
+                        const barH = Math.max(10, ((avgGpa - minGpa) / range) * BAR_MAX_HEIGHT);
+                        const color = avgGpa >= 3.5 ? '#30D158' : avgGpa >= 3.0 ? '#64D2FF' : avgGpa >= 2.5 ? '#FF9F0A' : '#FF453A';
+                        return (
+                            <View key={year} style={{ width: barW, alignItems: 'center', justifyContent: 'flex-end' }}>
+                                <Text style={{ fontSize: 9, fontWeight: '700', color, marginBottom: 3 }}>
+                                    {avgGpa.toFixed(2)}
+                                </Text>
+                                <View style={{
+                                    width: barW * 0.75,
+                                    height: barH,
+                                    backgroundColor: color,
+                                    borderRadius: 5,
+                                }} />
+                                <Text style={{ fontSize: 9, color: COLORS.textTertiary, marginTop: 4 }}>
+                                    {year}
+                                </Text>
+                            </View>
+                        );
+                    })}
+                </View>
+            </ScrollView>
+            <Text style={{ fontSize: 10, color: COLORS.textTertiary, textAlign: 'right', marginTop: 2 }}>
+                Y-axis: GPA · X-axis: year
+            </Text>
+        </View>
+    );
+}
+
+// Shows AP exams that can grant credit for a specific TAMU course
+function APCreditCard({ subject, courseNum, COLORS }: { subject: string; courseNum: string; COLORS: any }) {
+    const courseCode = `${subject} ${courseNum}`;
+    const matches = findApForCourse(courseCode);
+    if (!matches || matches.length === 0) return null;
+
+    const bestMatches = new Map<string, { minScore: number; credits: number }>();
+    for (const m of matches) {
+        const cur = bestMatches.get(m.apExam);
+        if (!cur || m.apScore < cur.minScore) {
+            bestMatches.set(m.apExam, { minScore: m.apScore, credits: m.credits });
+        }
+    }
+    const uniqueMatches = Array.from(bestMatches.entries()).map(([apExam, data]) => ({ apExam, ...data }));
+
+    const scoreColor = (score: number) => score >= 5 ? '#30D158' : score >= 4 ? '#64D2FF' : '#FF9F0A';
+
+    return (
+        <View style={{
+            marginHorizontal: 16,
+            marginBottom: 8,
+            backgroundColor: COLORS.surfaceElevated,
+            borderRadius: 14,
+            padding: 14,
+            borderWidth: 1,
+            borderColor: '#30D15830',
+        }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <Text style={{ fontSize: 16 }}>🎓</Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textPrimary }}>
+                    AP Credit Available
+                </Text>
+            </View>
+            <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 8 }}>
+                You may earn credit for {courseCode} through the following AP exams:
+            </Text>
+            {uniqueMatches.map((m, i) => (
+                <View key={i} style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingVertical: 8,
+                    borderTopWidth: i > 0 ? 1 : 0,
+                    borderTopColor: COLORS.border,
+                }}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.textPrimary }}>{m.apExam}</Text>
+                        <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>{m.credits} credit hour{m.credits !== 1 ? 's' : ''}</Text>
+                    </View>
+                    <View style={{
+                        paddingHorizontal: 10, paddingVertical: 4,
+                        backgroundColor: scoreColor(m.minScore) + '20',
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: scoreColor(m.minScore) + '40',
+                    }}>
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: scoreColor(m.minScore) }}>
+                            {m.minScore === 5 ? 'Score 5' : `Score ${m.minScore}+`}
+                        </Text>
+                    </View>
+                </View>
+            ))}
         </View>
     );
 }
@@ -194,20 +421,20 @@ function RatingBadge({
     );
 }
 
-function SectionCard({
-    item,
+function ProfCard({
+    prof,
     onPress,
     profRating,
     COLORS,
     styles,
 }: {
-    item: InstructorSectionStat;
+    prof: ProfSummary;
     onPress: () => void;
     profRating?: { overall_rating?: number; total_reviews?: number };
     COLORS: any;
     styles: any;
 }) {
-    const accentGpa = gpaColor(item.avgGpa);
+    const accentGpa = gpaColor(prof.avgGpa);
     return (
         <Pressable
             onPress={onPress}
@@ -217,7 +444,7 @@ function SectionCard({
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <Text style={styles.instructorName}>{item.instructor || 'STAFF'}</Text>
+                            <Text style={styles.instructorName}>{prof.instructor || 'STAFF'}</Text>
                             <RatingBadge
                                 rating={profRating?.overall_rating}
                                 reviews={profRating?.total_reviews}
@@ -225,12 +452,12 @@ function SectionCard({
                             />
                         </View>
                         <Text style={{ color: COLORS.textSecondary, fontSize: 13 }}>
-                            Sec {item.section} · {item.semester} {item.year} · {item.enrollment} enrolled
+                            {prof.sectionCount} section{prof.sectionCount !== 1 ? 's' : ''} · {prof.totalStudents.toLocaleString()} students
                         </Text>
                     </View>
                     <View style={{ alignItems: 'flex-end', marginLeft: 12 }}>
                         <Text style={[styles.sectionGpa, { color: accentGpa }]}>
-                            {item.avgGpa.toFixed(2)}
+                            {prof.avgGpa.toFixed(2)}
                         </Text>
                         <Text style={{ color: COLORS.textTertiary, fontSize: 10 }}>avg GPA</Text>
                     </View>
@@ -238,15 +465,15 @@ function SectionCard({
 
                 {/* Inline mini-distribution */}
                 <Text style={[styles.miniDist, { marginTop: 8 }]}>
-                    <Text style={{ color: '#30D158' }}>A: {item.percentA.toFixed(0)}%</Text>
+                    <Text style={{ color: '#30D158' }}>A: {prof.percentA.toFixed(0)}%</Text>
                     {'  '}
-                    <Text style={{ color: '#64D2FF' }}>B: {item.percentB.toFixed(0)}%</Text>
+                    <Text style={{ color: '#64D2FF' }}>B: {prof.percentB.toFixed(0)}%</Text>
                     {'  '}
-                    <Text style={{ color: '#FF9F0A' }}>C: {item.percentC.toFixed(0)}%</Text>
+                    <Text style={{ color: '#FF9F0A' }}>C: {prof.percentC.toFixed(0)}%</Text>
                     {'  '}
-                    <Text style={{ color: '#FF6B35' }}>D: {item.percentD.toFixed(0)}%</Text>
+                    <Text style={{ color: '#FF6B35' }}>D: {prof.percentD.toFixed(0)}%</Text>
                     {'  '}
-                    <Text style={{ color: '#FF453A' }}>F: {item.percentF.toFixed(0)}%</Text>
+                    <Text style={{ color: '#FF453A' }}>F: {prof.percentF.toFixed(0)}%</Text>
                 </Text>
             </View>
             <ChevronRight size={18} color={COLORS.textTertiary} style={{ marginLeft: 8, alignSelf: 'center' }} />
@@ -254,335 +481,6 @@ function SectionCard({
     );
 }
 
-function DetailModal({
-    item,
-    subject,
-    courseNum,
-    profRating,
-    onClose,
-    COLORS,
-    styles,
-}: {
-    item: InstructorSectionStat | null;
-    subject: string;
-    courseNum: string;
-    profRating?: { overall_rating?: number; total_reviews?: number };
-    onClose: () => void;
-    COLORS: any;
-    styles: any;
-}) {
-    const [profData, setProfData] = useState<any>(null);
-    const [loadingReviews, setLoadingReviews] = useState(false);
-    const [showReviews, setShowReviews] = useState(false);
-
-    // Auto-fetch professor data when modal opens to check if reviews exist
-    useEffect(() => {
-        setProfData(null);
-        setShowReviews(false);
-        setLoadingReviews(false);
-
-        if (!item?.instructor || item.instructor === 'STAFF') return;
-        setLoadingReviews(true);
-
-        const nameParts = item.instructor.split(',');
-        const searchName = nameParts[0]?.trim() || item.instructor;
-
-        requestJson(`/professors/search?name=${encodeURIComponent(searchName)}`)
-            .then((data: any) => setProfData(data))
-            .catch(() => {})
-            .finally(() => setLoadingReviews(false));
-    }, [item?.instructor]);
-
-    if (!item) return null;
-    const accentGpa = gpaColor(item.avgGpa);
-
-    const grades = [
-        { label: 'A', count: item.a_count, color: '#30D158' },
-        { label: 'B', count: item.b_count, color: '#64D2FF' },
-        { label: 'C', count: item.c_count, color: '#FF9F0A' },
-        { label: 'D', count: item.d_count, color: '#FF6B35' },
-        { label: 'F', count: item.f_count, color: '#FF453A' },
-        { label: 'I', count: item.i_count, color: '#8E8E93' },
-        { label: 'Q', count: item.q_count, color: '#636366' },
-        { label: 'S', count: item.s_count, color: '#30D158' },
-        { label: 'U', count: item.u_count, color: '#FF453A' },
-        { label: 'X', count: item.x_count, color: '#8E8E93' },
-    ].filter(g => g.count > 0);
-
-    const reviews = profData?.reviews || [];
-    const overallRating = profData?.overall_rating || profRating?.overall_rating;
-    const totalReviews = profData?.total_reviews || profRating?.total_reviews;
-    const wouldTakeAgain = profData?.would_take_again_percent;
-
-    const ratingColor = (r: number) =>
-        r >= 4.0 ? '#30D158' : r >= 3.0 ? '#64D2FF' : r >= 2.0 ? '#FF9F0A' : '#FF453A';
-
-    return (
-        <Modal visible={true} transparent animationType="slide" onRequestClose={onClose}>
-            <View style={styles.modalOverlay}>
-                <View style={[styles.modalSheet, { maxHeight: '92%' }]}>
-                    <View style={styles.modalHandle} />
-
-                    {/* Header */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                        <View style={{ flex: 1 }}>
-                            <Text style={styles.modalTitle}>
-                                {subject.toUpperCase()} {courseNum} · Sec {item.section}
-                            </Text>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
-                                <Text style={{ color: COLORS.textSecondary, fontSize: 14 }}>
-                                    {item.semester} {item.year} · Prof. {item.instructor}
-                                </Text>
-                                <RatingBadge
-                                    rating={profRating?.overall_rating}
-                                    reviews={profRating?.total_reviews}
-                                    COLORS={COLORS}
-                                />
-                            </View>
-                        </View>
-                        <Pressable onPress={onClose} style={styles.closeBtn}>
-                            <X size={20} color={COLORS.textSecondary} />
-                        </Pressable>
-                    </View>
-
-                    <ScrollView showsVerticalScrollIndicator={false}>
-                        {/* Professor Rating Summary */}
-                        {overallRating != null && overallRating > 0 && (
-                            <View style={{
-                                backgroundColor: COLORS.surface,
-                                borderRadius: 14,
-                                padding: 14,
-                                marginBottom: 12,
-                                borderWidth: 1,
-                                borderColor: COLORS.border,
-                            }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                                    <Star size={20} color="#FFD60A" fill="#FFD60A" />
-                                    <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.textPrimary }}>
-                                        {overallRating.toFixed(1)} / 5.0
-                                    </Text>
-                                    {totalReviews != null && totalReviews > 0 && (
-                                        <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>
-                                            ({totalReviews} reviews)
-                                        </Text>
-                                    )}
-                                </View>
-                                {wouldTakeAgain != null && wouldTakeAgain > 0 && (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                                        <View style={{
-                                            height: 6, flex: 1, borderRadius: 3,
-                                            backgroundColor: COLORS.border,
-                                        }}>
-                                            <View style={{
-                                                height: 6, borderRadius: 3,
-                                                backgroundColor: '#30D158',
-                                                width: `${Math.min(wouldTakeAgain, 100)}%`,
-                                            }} />
-                                        </View>
-                                        <Text style={{ fontSize: 12, fontWeight: '600', color: '#30D158' }}>
-                                            {wouldTakeAgain.toFixed(0)}% would take again
-                                        </Text>
-                                    </View>
-                                )}
-                                {profData?.overallSummary?.strengths && (
-                                    <View style={{ marginTop: 10 }}>
-                                        <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.textTertiary, marginBottom: 4, letterSpacing: 0.5 }}>
-                                            STRENGTHS
-                                        </Text>
-                                        {profData.overallSummary.strengths.slice(0, 2).map((s: string, i: number) => (
-                                            <Text key={i} style={{ fontSize: 12, color: COLORS.textSecondary, lineHeight: 16, marginBottom: 2 }}>
-                                                • {s.length > 120 ? s.slice(0, 120) + '…' : s}
-                                            </Text>
-                                        ))}
-                                    </View>
-                                )}
-                            </View>
-                        )}
-
-                        {/* GPA badge */}
-                        <View style={[styles.modalGpaBadge, { backgroundColor: accentGpa + '18' }]}>
-                            <Text style={[styles.modalGpaText, { color: accentGpa }]}>
-                                {item.avgGpa.toFixed(3)}
-                            </Text>
-                            <Text style={{ color: accentGpa, fontSize: 13, fontWeight: '600' }}>
-                                Average GPA · {item.enrollment} students
-                            </Text>
-                        </View>
-
-                        {/* Grade bars */}
-                        <View style={{ marginTop: 16 }}>
-                            {grades.map(g => (
-                                <View key={g.label} style={{ marginBottom: 10 }}>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                                        <Text style={{ color: COLORS.textSecondary, fontWeight: '700', width: 24 }}>
-                                            {g.label}
-                                        </Text>
-                                        <Text style={{ color: COLORS.textPrimary, fontWeight: '600', flex: 1, paddingLeft: 8 }}>
-                                            {g.count} students
-                                        </Text>
-                                        <Text style={{ color: g.color, fontWeight: '700' }}>
-                                            {item.enrollment > 0 ? ((g.count / item.enrollment) * 100).toFixed(1) : '0.0'}%
-                                        </Text>
-                                    </View>
-                                    <View style={{ height: 8, borderRadius: 4, backgroundColor: COLORS.border }}>
-                                        <View
-                                            style={{
-                                                height: 8,
-                                                borderRadius: 4,
-                                                backgroundColor: g.color,
-                                                width: item.enrollment > 0
-                                                    ? `${Math.min((g.count / item.enrollment) * 100, 100)}%`
-                                                    : '0%',
-                                            }}
-                                        />
-                                    </View>
-                                </View>
-                            ))}
-                        </View>
-
-                        {/* Professor Reviews */}
-                        {/* Professor Reviews Section */}
-                        {item.instructor && item.instructor !== 'STAFF' && (
-                            <>
-                                {/* Loading state */}
-                                {loadingReviews && (
-                                    <View style={{ paddingVertical: 20, alignItems: 'center' }}>
-                                        <ActivityIndicator size="small" color={COLORS.primary} />
-                                        <Text style={{ color: COLORS.textTertiary, fontSize: 12, marginTop: 6 }}>Loading professor data…</Text>
-                                    </View>
-                                )}
-
-                                {/* No reviews — show inline message, no button needed */}
-                                {!loadingReviews && profData && reviews.length === 0 && (
-                                    <View style={{
-                                        marginTop: 16, paddingVertical: 16, paddingHorizontal: 14, alignItems: 'center',
-                                        backgroundColor: COLORS.surface, borderRadius: 12,
-                                        borderWidth: 1, borderColor: COLORS.border,
-                                    }}>
-                                        <Text style={{ color: COLORS.textTertiary, fontSize: 13 }}>
-                                            No written reviews available for this professor.
-                                        </Text>
-                                        {profData.overall_rating != null && profData.overall_rating > 0 && (
-                                            <Text style={{ color: COLORS.textSecondary, fontSize: 12, marginTop: 6 }}>
-                                                Overall rating: {profData.overall_rating.toFixed(1)} / 5.0 ({profData.total_reviews || 0} ratings)
-                                            </Text>
-                                        )}
-                                    </View>
-                                )}
-
-                                {/* Has reviews but not expanded — show button */}
-                                {!loadingReviews && reviews.length > 0 && !showReviews && (
-                                    <Pressable
-                                        onPress={() => setShowReviews(true)}
-                                        style={({ pressed }) => ({
-                                            marginTop: 16,
-                                            backgroundColor: pressed ? COLORS.primary + '30' : COLORS.primary + '15',
-                                            borderRadius: 12,
-                                            paddingVertical: 14,
-                                            paddingHorizontal: 16,
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            gap: 8,
-                                            borderWidth: 1,
-                                            borderColor: COLORS.primary + '30',
-                                        })}
-                                    >
-                                        <Star size={16} color={COLORS.primary} />
-                                        <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.primary }}>
-                                            View Written Reviews ({Math.min(reviews.length, 10)})
-                                        </Text>
-                                    </Pressable>
-                                )}
-
-                                {/* Reviews expanded */}
-                                {showReviews && reviews.length > 0 && (
-                            <View style={{ marginTop: 16 }}>
-                                <Text style={{
-                                    fontSize: 13, fontWeight: '700', color: COLORS.textTertiary,
-                                    letterSpacing: 0.5, marginBottom: 10,
-                                }}>
-                                    STUDENT REVIEWS ({Math.min(reviews.length, 10)})
-                                </Text>
-                                {reviews.slice(0, 10).map((review: any, idx: number) => {
-                                    const revRating = review.overall_rating || 0;
-                                    const revColor = ratingColor(revRating);
-                                    const reviewDate = review.review_date
-                                        ? new Date(review.review_date).toLocaleDateString('en-US', {
-                                            month: 'short', year: 'numeric',
-                                        })
-                                        : '';
-                                    return (
-                                        <View key={review.id || idx} style={{
-                                            backgroundColor: COLORS.surface,
-                                            borderRadius: 12,
-                                            padding: 12,
-                                            marginBottom: 8,
-                                            borderWidth: 1,
-                                            borderColor: COLORS.border,
-                                        }}>
-                                            {/* Review header */}
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                                    <View style={{
-                                                        backgroundColor: revColor + '20',
-                                                        paddingHorizontal: 8, paddingVertical: 3,
-                                                        borderRadius: 6,
-                                                    }}>
-                                                        <Text style={{ fontSize: 13, fontWeight: '800', color: revColor }}>
-                                                            {revRating.toFixed(1)}
-                                                        </Text>
-                                                    </View>
-                                                    {review.grade && (
-                                                        <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary }}>
-                                                            Grade: {review.grade}
-                                                        </Text>
-                                                    )}
-                                                    {review.would_take_again != null && (
-                                                        <Text style={{ fontSize: 11, color: review.would_take_again ? '#30D158' : '#FF453A' }}>
-                                                            {review.would_take_again ? '✓ Would retake' : '✗ Wouldn\'t retake'}
-                                                        </Text>
-                                                    )}
-                                                </View>
-                                                <Text style={{ fontSize: 11, color: COLORS.textTertiary }}>{reviewDate}</Text>
-                                            </View>
-
-                                            {/* Review text */}
-                                            <Text style={{ fontSize: 13, color: COLORS.textPrimary, lineHeight: 19 }}>
-                                                {review.review_text}
-                                            </Text>
-
-                                            {/* Tags */}
-                                            {review.tags && review.tags.length > 0 && (
-                                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
-                                                    {review.tags.map((tag: string, ti: number) => (
-                                                        <View key={ti} style={{
-                                                            backgroundColor: COLORS.primary + '15',
-                                                            paddingHorizontal: 8, paddingVertical: 3,
-                                                            borderRadius: 6,
-                                                        }}>
-                                                            <Text style={{ fontSize: 10, fontWeight: '600', color: COLORS.primary }}>
-                                                                {tag}
-                                                            </Text>
-                                                        </View>
-                                                    ))}
-                                                </View>
-                                            )}
-                                        </View>
-                                    );
-                                })}
-                            </View>
-                        )}
-                            </>
-                        )}
-
-                        <View style={{ height: 40 }} />
-                    </ScrollView>
-                </View>
-            </View>
-        </Modal>
-    );
-}
 
 // ──────────────────────────────────────────────────────────────
 // Main Screen
@@ -595,6 +493,8 @@ export function GradesScreen() {
     const styles = getStyles(COLORS);
 
     const route = useRoute<any>();
+    const navigation = useNavigation<any>();
+    const { width: screenWidth } = useWindowDimensions();
     const initialSubject = route?.params?.initialSubject || '';
     const initialCourseNum = route?.params?.initialCourseNum || '';
 
@@ -606,7 +506,6 @@ export function GradesScreen() {
     const [screenState, setScreenState] = useState<ScreenState>('idle');
     const [result, setResult] = useState<GradeSearchResult | null>(null);
     const [errorMsg, setErrorMsg] = useState('');
-    const [selectedSection, setSelectedSection] = useState<InstructorSectionStat | null>(null);
     const [courseInfo, setCourseInfo] = useState<any>(null);
     const [profRatings, setProfRatings] = useState<Record<string, { overall_rating?: number; total_reviews?: number }>>({});
     const [restoredFromStorage, setRestoredFromStorage] = useState(false);
@@ -632,24 +531,27 @@ export function GradesScreen() {
         })?.[1];
     }, [profRatings]);
 
-    // Derived: filtered + sorted sections
-    const filteredSections = useMemo(() => {
+    // Derived: grouped by prof, filtered + sorted
+    const filteredProfs = useMemo(() => {
         if (!result?.sections) return [];
-        let sections = [...result.sections];
+        let profs = groupByProfessor(result.sections);
 
         // Name filter
         if (nameFilter.trim()) {
             const q = nameFilter.trim().toUpperCase();
-            sections = sections.filter(s =>
-                (s.instructor || '').toUpperCase().includes(q)
+            profs = profs.filter(p =>
+                (p.instructor || '').toUpperCase().includes(q)
             );
         }
 
         // Sort
         const dir = sortDir === 'asc' ? 1 : -1;
-        sections.sort((a, b) => {
+        profs.sort((a, b) => {
             if (sortKey === 'gpa') {
                 return (a.avgGpa - b.avgGpa) * dir;
+            }
+            if (sortKey === 'students') {
+                return (a.totalStudents - b.totalStudents) * dir;
             }
             if (sortKey === 'rating') {
                 const rA = findProfRating(a.instructor)?.overall_rating || 0;
@@ -660,7 +562,7 @@ export function GradesScreen() {
             return (a.instructor || '').localeCompare(b.instructor || '') * dir;
         });
 
-        return sections;
+        return profs;
     }, [result?.sections, nameFilter, sortKey, sortDir, findProfRating]);
 
     const toggleSort = useCallback((key: SortKey) => {
@@ -792,6 +694,20 @@ export function GradesScreen() {
         performSearch(subject, courseNum);
     }, [subject, courseNum]);
 
+    const handleReset = useCallback(() => {
+        setSubject('');
+        setCourseNum('');
+        setResult(null);
+        setScreenState('idle');
+        setErrorMsg('');
+        setSearchedSubject('');
+        setSearchedCourseNum('');
+        setNameFilter('');
+        setCourseInfo(null);
+        setProfRatings({});
+        AsyncStorage.removeItem(GRADES_STORAGE_KEY).catch(() => {});
+    }, []);
+
     return (
         <SafeAreaView style={styles.container}>
             <KeyboardAvoidingView
@@ -809,25 +725,49 @@ export function GradesScreen() {
 
                 {/* ── Search inputs ── */}
                 <View style={styles.searchRow}>
-                    <TextInput
-                        style={[styles.input, { flex: 1.2 }]}
-                        placeholder="Subject"
-                        placeholderTextColor={COLORS.textTertiary}
-                        value={subject}
-                        onChangeText={t => setSubject(t.toUpperCase())}
-                        autoCapitalize="characters"
-                        returnKeyType="next"
-                    />
-                    <TextInput
-                        style={[styles.input, { flex: 1 }]}
-                        placeholder="Number"
-                        placeholderTextColor={COLORS.textTertiary}
-                        value={courseNum}
-                        onChangeText={setCourseNum}
-                        keyboardType="default"
-                        returnKeyType="search"
-                        onSubmitEditing={handleSearch}
-                    />
+                    {/* Subject input with inline X */}
+                    <View style={[styles.inputWrap, { flex: 1.2 }]}>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Subject"
+                            placeholderTextColor={COLORS.textTertiary}
+                            value={subject}
+                            onChangeText={t => setSubject(t.toUpperCase())}
+                            autoCapitalize="characters"
+                            returnKeyType="next"
+                        />
+                        {subject.length > 0 && (
+                            <Pressable
+                                onPress={handleReset}
+                                hitSlop={8}
+                                style={styles.inputClearBtn}
+                            >
+                                <X size={13} color={COLORS.textTertiary} />
+                            </Pressable>
+                        )}
+                    </View>
+                    {/* Number input with inline X */}
+                    <View style={[styles.inputWrap, { flex: 1 }]}>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Number"
+                            placeholderTextColor={COLORS.textTertiary}
+                            value={courseNum}
+                            onChangeText={setCourseNum}
+                            keyboardType="default"
+                            returnKeyType="search"
+                            onSubmitEditing={handleSearch}
+                        />
+                        {courseNum.length > 0 && (
+                            <Pressable
+                                onPress={() => setCourseNum('')}
+                                hitSlop={8}
+                                style={styles.inputClearBtn}
+                            >
+                                <X size={13} color={COLORS.textTertiary} />
+                            </Pressable>
+                        )}
+                    </View>
                     <Pressable
                         style={({ pressed }) => [styles.searchBtn, pressed && { opacity: 0.8 }]}
                         onPress={handleSearch}
@@ -887,9 +827,20 @@ export function GradesScreen() {
                                             COLORS={COLORS}
                                             styles={styles}
                                         />
+                                        <APCreditCard
+                                            subject={searchedSubject}
+                                            courseNum={searchedCourseNum}
+                                            COLORS={COLORS}
+                                        />
                                         <PrerequisitesCard
                                             prerequisites={courseInfo?.prerequisites || ''}
                                             COLORS={COLORS}
+                                        />
+                                        <GpaTimelineChart
+                                            sections={result.sections}
+                                            COLORS={COLORS}
+                                            chartWidth={screenWidth - 32}
+                                            title={`${searchedSubject} ${searchedCourseNum} — Avg GPA by Year (All Profs)`}
                                         />
 
                                         {/* ── Filter / Sort toolbar ── */}
@@ -915,7 +866,7 @@ export function GradesScreen() {
 
                                             {/* Sort pills */}
                                             <View style={styles.sortRow}>
-                                                {([['gpa', 'GPA'], ['rating', 'Rating'], ['name', 'Name']] as [SortKey, string][]).map(([key, label]) => {
+                                                {([['gpa', 'GPA'], ['rating', 'Rating'], ['students', 'Students'], ['name', 'Name']] as [SortKey, string][]).map(([key, label]) => {
                                                     const isActive = sortKey === key;
                                                     return (
                                                         <Pressable
@@ -941,20 +892,25 @@ export function GradesScreen() {
 
                                             {nameFilter.trim() !== '' && (
                                                 <Text style={{ fontSize: 11, color: COLORS.textTertiary, marginTop: 4 }}>
-                                                    {filteredSections.length} section{filteredSections.length !== 1 ? 's' : ''} found
+                                                    {filteredProfs.length} professor{filteredProfs.length !== 1 ? 's' : ''} found
                                                 </Text>
                                             )}
                                         </View>
                                     </>
                                 }
-                                data={filteredSections}
-                                keyExtractor={(item, idx) => `${item.term_code}_${item.section}_${item.instructor}_${idx}`}
+                                data={filteredProfs}
+                                keyExtractor={(item) => item.instructor}
                                 renderItem={({ item }) => {
                                     const profRating = findProfRating(item.instructor);
                                     return (
-                                        <SectionCard
-                                            item={item}
-                                            onPress={() => setSelectedSection(item)}
+                                        <ProfCard
+                                            prof={item}
+                                            onPress={() => navigation.navigate('ProfDetail', {
+                                                prof: item,
+                                                subject: searchedSubject,
+                                                courseNum: searchedCourseNum,
+                                                profRating,
+                                            })}
                                             profRating={profRating}
                                             COLORS={COLORS}
                                             styles={styles}
@@ -969,17 +925,6 @@ export function GradesScreen() {
                     </>
                 )}
             </KeyboardAvoidingView>
-
-            {/* Detail modal */}
-            <DetailModal
-                item={selectedSection}
-                subject={searchedSubject}
-                courseNum={searchedCourseNum}
-                profRating={selectedSection ? findProfRating(selectedSection.instructor) : undefined}
-                onClose={() => setSelectedSection(null)}
-                COLORS={COLORS}
-                styles={styles}
-            />
         </SafeAreaView>
     );
 }
@@ -1025,8 +970,21 @@ const getStyles = (COLORS: any) =>
             borderColor: COLORS.border,
             borderRadius: 12,
             paddingHorizontal: 12,
+            paddingRight: 32, // make room for clear button
             fontSize: 15,
             color: COLORS.textPrimary,
+            flex: 1,
+        },
+        inputWrap: {
+            position: 'relative',
+            justifyContent: 'center',
+        },
+        inputClearBtn: {
+            position: 'absolute',
+            right: 10,
+            height: 46,
+            justifyContent: 'center',
+            alignItems: 'center',
         },
         searchBtn: {
             height: 46,
