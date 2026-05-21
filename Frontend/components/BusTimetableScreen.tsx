@@ -225,7 +225,11 @@ export default function BusTimetableScreen({ navigation, route }: any) {
             </View>
 
             <View style={styles.boardCard}>
-              {entries.length > 0 ? (
+              {liveBusCount === 0 ? (
+                <Text style={styles.emptyText}>
+                  There are currently no buses on this route.
+                </Text>
+              ) : entries.length > 0 ? (
                 entries.map((entry: any) => (
                   <TimetableRow
                     key={`${routeInfo?.Key || "route"}-${entry.stop?.StopCode || entry.sequence}`}

@@ -295,7 +295,7 @@ export function BusTimetableSheet({
               {effectiveVehicleStatus}
             </Text>
           ) : null}
-          {selectedRoute && (sourceBadgeLabel || timetableSummary) ? (
+          {selectedRoute && liveBusCount > 0 && (sourceBadgeLabel || timetableSummary) ? (
             <View style={styles.metaRow}>
               {sourceBadgeLabel ? (
                 <View
@@ -356,6 +356,19 @@ export function BusTimetableSheet({
               ]}
             >
               Retrieving live route schedule...
+            </Text>
+          </View>
+        ) : mode === "single" && selectedRoute && liveBusCount === 0 ? (
+          <View style={styles.emptyState}>
+            <Clock
+              size={40}
+              color={isDark ? "#FF8FA3" : "#500000"}
+              style={{ opacity: 0.8, marginBottom: 12 }}
+            />
+            <Text
+              style={[styles.emptyStateText, { color: COLORS.textSecondary }]}
+            >
+              There are currently no buses on this route.
             </Text>
           </View>
         ) : (
