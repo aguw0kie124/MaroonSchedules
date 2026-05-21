@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, Modal, Pressable, ScrollView } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, Modal, Pressable, ScrollView, Alert } from 'react-native';
 import { useRoute, useNavigation, CommonActions } from '@react-navigation/native';
 import { fetchCourseById, fetchSchedules, addSectionToSchedule } from '../api/client';
 import { useTheme, Card, SectionRow, PrimaryButton } from './SharedUI';
 import { useUser } from '@clerk/clerk-expo';
 import { Calendar, ChevronRight } from 'lucide-react-native';
-import { navigationRef } from '../navigation/Refs';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Parse a prereq string into alternating plain-text and course-code tokens
 // e.g. "CSCE 121 or MATH 151" → [{type:'course', value:'CSCE 121'}, {type:'text', value:' or '}, ...]
@@ -40,7 +40,7 @@ export function NewCourseDetailScreen() {
 
     const [modalVisible, setModalVisible] = useState(false);
     const [schedules, setSchedules] = useState<any[]>([]);
-    const [selectedSection, setSelectedSection] = useState<string | null>(null);
+    const [selectedSection, setSelectedSection] = useState<any>(null);
     const [isAdding, setIsAdding] = useState(false);
 
     useEffect(() => {
@@ -64,8 +64,30 @@ export function NewCourseDetailScreen() {
     };
 
     const handleAddSectionClick = (sectionId: string) => {
-        setSelectedSection(sectionId);
-        setModalVisible(true);
+        // Find the full section object from the course data
+        const sectionObj = (course?.sections || []).find((s: any) => s.id === sectionId);
+
+        // If the section is closed, show a warning first
+        if (sectionObj && !sectionObj.isOpen) {
+            Alert.alert(
+                'Section Closed',
+                'This section is currently closed. Are you sure you want to add it to your schedule?',
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                        text: 'Add Anyway',
+                        style: 'destructive',
+                        onPress: () => {
+                            setSelectedSection(sectionObj);
+                            setModalVisible(true);
+                        },
+                    },
+                ]
+            );
+        } else {
+            setSelectedSection(sectionObj || { id: sectionId });
+            setModalVisible(true);
+        }
     };
 
     const confirmAddToSchedule = async (scheduleId: string) => {
@@ -73,11 +95,23 @@ export function NewCourseDetailScreen() {
         
         setIsAdding(true);
         try {
-            await addSectionToSchedule(scheduleId, selectedSection, userId);
+            await addSectionToSchedule(scheduleId, selectedSection.id, userId);
+
+            // Cache the full section object locally so ScheduleDetailScreen can display it
+            try {
+                await AsyncStorage.setItem(
+                    `section_cache_${selectedSection.id}`,
+                    JSON.stringify(selectedSection),
+                );
+            } catch (_) { /* non-critical */ }
+
             setModalVisible(false);
             
             // Show success message and stay on the screen
-            alert("Section added to your schedule!");
+            const sectionLabel = selectedSection.dept
+                ? `${selectedSection.dept} ${selectedSection.courseNumber} - Sec ${selectedSection.sectionNumber}`
+                : `Section ${selectedSection.sectionNumber || selectedSection.id}`;
+            alert(`${sectionLabel} added to your schedule!`);
         } catch (e) {
             alert("Failed to add section.");
         } finally {
@@ -116,10 +150,7 @@ export function NewCourseDetailScreen() {
                                 token.type === 'course' ? (
                                     <Pressable
                                         key={idx}
-                                        onPress={() => (navigationRef as any).navigate('Grades', {
-                                            screen: 'APEquivalency',
-                                            params: { initialFilter: token.value },
-                                        })}
+                                        onPress={() => navigation.navigate('APEquivalency', { initialFilter: token.value })}
                                         style={({ pressed }) => ({
                                             backgroundColor: pressed ? COLORS.primary + '40' : COLORS.primary + '18',
                                             borderRadius: 8,

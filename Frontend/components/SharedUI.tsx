@@ -230,9 +230,11 @@ export const SectionRow = ({ section, onAdd, onRemove, isAdded }: any) => {
                 <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start'}}>
                     <View style={{flex: 1}}>
                         <Text style={styles.sectionTitle}>
-                            {section.dept ? `${section.dept} ${section.courseNumber} · Sec ${section.sectionNumber}` : `Section ${section.sectionNumber || section.section || section.id}`}
+                            {section.dept
+                                ? `${section.dept} ${section.courseNumber} · Sec ${section.sectionNumber}`
+                                : `${section.courseTitle || section.name || 'Course'} (Sec ${section.sectionNumber || section.section || section.id})`}
                         </Text>
-                        {(section.courseTitle || section.name) && (
+                        {section.dept && (section.courseTitle || section.name) && (
                             <Text style={{fontWeight: '700', color: COLORS.textPrimary, fontSize: 15, marginBottom: 6}}>
                                 {section.courseTitle || section.name}
                             </Text>

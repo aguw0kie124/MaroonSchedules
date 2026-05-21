@@ -389,7 +389,7 @@ function MainTabs(props: any) {
         return {
           name: 'Grades',
           component: GradesStack,
-          title: 'Grades',
+          title: 'Academics',
           icon: BarChart2,
         };
       }

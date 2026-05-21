@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, useWindowDimensions, Pressable } from 'react-native';
 import { useRoute, useNavigation, useIsFocused, CommonActions } from '@react-navigation/native';
-import { fetchSchedules, removeSectionFromSchedule } from '../api/client';
+import { fetchSchedules, removeSectionFromSchedule, requestJson } from '../api/client';
 import { useTheme, PrimaryButton, SectionRow, Card } from './SharedUI';
 import { useUser } from '@clerk/clerk-expo';
 import { ChevronLeft, Share2 } from 'lucide-react-native';
 import { useShareStore } from '../store/shareStore';
 import { triggerNativeShare } from '../utils/share';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export function ScheduleDetailScreen() {
     const { COLORS } = useTheme();
@@ -143,7 +144,31 @@ export function ScheduleDetailScreen() {
         try {
             const data = await fetchSchedules(userId);
             const found = data.find((s: any) => s.schedule_id === scheduleId);
-            if (found) setSchedule(found);
+            if (!found) return;
+
+            // Enrich any bare sections (backend cache miss → only has id)
+            const enriched = await Promise.all(
+                (found.sections || []).map(async (sec: any) => {
+                    // A bare section has no dept, courseTitle, or sectionNumber
+                    if (!sec.dept && !sec.courseTitle && !sec.name && !sec.sectionNumber) {
+                        const secId = sec.id || sec.section_id;
+                        // 1. Try local AsyncStorage cache (saved when user added the section)
+                        try {
+                            const cached = await AsyncStorage.getItem(`section_cache_${secId}`);
+                            if (cached) return JSON.parse(cached);
+                        } catch { /* ignore */ }
+                        // 2. Fallback: try backend API
+                        try {
+                            const full = await requestJson(`/sections/${secId}`);
+                            return full || sec;
+                        } catch {
+                            return sec;
+                        }
+                    }
+                    return sec;
+                })
+            );
+            setSchedule({ ...found, sections: enriched });
         } catch (e) { }
     };
 
@@ -238,7 +263,10 @@ export function ScheduleDetailScreen() {
                             const height = ((endTime - startTime) / 60) * ROW_HEIGHT;
 
                             // Safe course code display handling empty depts or ids
-                            const courseCode = `${sec.dept || ''} ${sec.courseNumber || ''}`.trim() || sec.id;
+                            const courseCode = sec.dept
+                                ? `${sec.dept} ${sec.courseNumber || ''}`
+                                : (sec.courseTitle || sec.name || sec.course_display || sec.id || 'Course');
+                            const secNum = sec.sectionNumber || sec.section || '';
 
                             return (
                                 <View
@@ -254,7 +282,7 @@ export function ScheduleDetailScreen() {
                                         },
                                     ]}
                                 >
-                                    <Text style={styles.blockCode} numberOfLines={1}>{courseCode}</Text>
+                                    <Text style={styles.blockCode} numberOfLines={1}>{courseCode}{secNum ? ` - ${secNum}` : ''}</Text>
                                     <Text style={styles.blockText} numberOfLines={1}>{meeting.building} {meeting.room}</Text>
                                     <Text style={styles.blockText} numberOfLines={1}>{meeting.beginTime}</Text>
                                 </View>
