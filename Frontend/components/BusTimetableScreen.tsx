@@ -78,18 +78,26 @@ function TimetableRow({
       return;
     }
 
-    // Parse ETA. Entry.etaLabel is usually "5 min" or "10:30 PM"
-    // For simplicity, we'll try to extract minutes if it's a relative time
-    let minutes = 0;
-    if (entry.etaLabel?.toLowerCase().includes("min")) {
-      minutes = parseInt(entry.etaLabel) || 0;
-    } else {
-      // If it's a timestamp, we'd need to calculate diff from now.
-      // Assuming for now it's often minute-based or we can estimate.
-      // If we can't determine, we'll skip for now or use a default if it's soon.
-      minutes = 10; // Default estimate if only time is shown
+    const nextDeparture = entry.departures?.[0];
+    const departTimeIso =
+      nextDeparture?.estimated_depart_time_utc ||
+      nextDeparture?.scheduled_depart_time_utc;
+
+    if (!departTimeIso) {
+      Alert.alert(
+        "No Upcoming Departures",
+        "There is no scheduled departure to remind you about at this stop.",
+      );
+      return;
     }
 
+    const departMs = new Date(departTimeIso).getTime();
+    if (!Number.isFinite(departMs)) {
+      Alert.alert("No Upcoming Departures", "Could not read the next departure time.");
+      return;
+    }
+
+    const minutes = Math.round((departMs - Date.now()) / 60000);
     if (minutes <= 0) {
       Alert.alert("Bus Arriving", "This bus is already arriving!");
       return;

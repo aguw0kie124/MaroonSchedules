@@ -6,7 +6,6 @@ import {
   haversineDistanceMeters,
   getClosestProgressMeters,
   formatBusDistance,
-  getApproximateEtaMinutes,
   isVehicleOnRoute,
 } from "./utils";
 
@@ -591,63 +590,33 @@ export function useBusTransit(
           : null;
         const primaryTime = estimatedTime || scheduledTime;
 
-        const liveEtaMinutes =
-          stop && busVehicles.length > 0
-            ? busVehicles
-                .map((bus) => getApproximateEtaMinutes(routePatterns, stop, bus))
-                .filter((value) => Number.isFinite(value))
-                .sort((left, right) => left - right)[0]
-            : undefined;
-
         return {
           stop,
           sequence: entry.sequence ?? index + 1,
-          etaLabel: primaryTime
-            ? formatExactLocalTime(primaryTime)
-            : typeof liveEtaMinutes === 'number'
-              ? liveEtaMinutes <= 1
-                ? 'Now'
-                : `${liveEtaMinutes} min`
-              : 'No times',
-          detail: primaryTime
-            ? getDepartureBoardDetail(routeTimetableFreshness, nextDeparture)
-            : typeof liveEtaMinutes === 'number'
-              ? 'Estimated from live buses'
-              : getDepartureBoardDetail(routeTimetableFreshness, nextDeparture),
+          etaLabel: primaryTime ? formatExactLocalTime(primaryTime) : 'No times',
+          detail: getDepartureBoardDetail(routeTimetableFreshness, nextDeparture),
           departures,
         };
       });
     }
 
     return busStops.map((stop, index) => {
-      const liveEtaMinutes = busVehicles
-        .map((bus) => getApproximateEtaMinutes(routePatterns, stop, bus))
-        .filter((value) => Number.isFinite(value))
-        .sort((left, right) => left - right)[0];
-
       return {
         stop,
         sequence: index + 1,
-        etaLabel:
-          typeof liveEtaMinutes === 'number'
-            ? liveEtaMinutes <= 1
-              ? 'Now'
-              : `${liveEtaMinutes} min`
-            : 'No times',
+        etaLabel: 'No times',
         detail:
           routeTimetableState === 'error'
             ? 'Route timetable temporarily unavailable'
             : routeTimetableFreshness?.source === 'schedule_fallback'
               ? 'Scheduled departures only'
               : routeTimetableFreshness?.source === 'unavailable'
-                ? typeof liveEtaMinutes === 'number'
-                  ? 'Estimated from live buses'
-                  : 'Live departures unavailable right now'
+                ? 'Live departures unavailable right now'
                 : 'No scheduled departures',
         departures: [],
       };
     });
-  }, [activeLayer, busStops, busVehicles, routePatterns, routeTimetableEntries, routeTimetableFreshness, routeTimetableState, selectedRoute]);
+  }, [activeLayer, busStops, routeTimetableEntries, routeTimetableFreshness, routeTimetableState, selectedRoute]);
 
   const vehicleStatusLabel = useMemo(() => {
     if (isAllBusRoutesSelected) {
