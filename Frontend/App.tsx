@@ -80,6 +80,8 @@ import PublicProfileScreen from './components/social/PublicProfileScreen';
 import { FocusMotionView } from './components/common/Motion';
 import { useEventStore, type MajorOption } from './store/eventStore';
 import { addFriend } from './services/socialFeedService';
+import { useAppUpdates } from './hooks/useAppUpdates';
+import { OtaUpdateModal, StoreUpdateModal, ForcedUpdateModal } from './components/modals/UpdateModals';
 
 const VALID_EVENT_MAJORS: MajorOption[] = [
   'Engineering',
@@ -750,6 +752,7 @@ function TabButtonWrapper({ screenName, props }: { screenName: string; props: an
 
 function App() {
   const { theme, COLORS } = useTheme();
+  const updateState = useAppUpdates();
 
   React.useEffect(() => {
     useThemeStore.getState().loadThemePrefs().catch((error: unknown) => {
@@ -782,6 +785,19 @@ function App() {
               <TourProvider>
                 <ErrorBoundary name="Root Navigator">
                   <RootNavigator />
+                  
+                  {/* Update Management Modals */}
+                  <OtaUpdateModal visible={updateState.otaUpdateAvailable} />
+                  <StoreUpdateModal 
+                    visible={updateState.storeUpdateAvailable && !updateState.forcedUpdateRequired && !updateState.otaUpdateAvailable} 
+                    onDismiss={updateState.dismissStoreUpdate} 
+                    storeUrl={updateState.storeUrl}
+                  />
+                  <ForcedUpdateModal 
+                    visible={updateState.forcedUpdateRequired && !updateState.otaUpdateAvailable} 
+                    storeUrl={updateState.storeUrl} 
+                  />
+
                 </ErrorBoundary>
               </TourProvider>
             </NavigationContainer>

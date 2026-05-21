@@ -27,6 +27,7 @@ from routers.grades import router as grades_router
 from routers.maps import router as maps_router
 from routers.posts import router as posts_router
 from routers.traffic import router as traffic_router
+from routers.updates import router as updates_router
 from routers.upload import UPLOAD_DIR
 from routers.upload import router as upload_router
 from services import cache_service, course_service, schedule_service, snapshot_jobs, user_service
@@ -106,6 +107,7 @@ protected_router.include_router(upload_router)
 protected_router.include_router(admin_router)
 
 public_router.include_router(public_dining_router)
+public_router.include_router(updates_router)
 optional_protected_router.include_router(traffic_router, prefix="/traffic", tags=["Traffic"])
 optional_protected_router.include_router(campus_hub_router)
 optional_protected_router.include_router(annex_router)
