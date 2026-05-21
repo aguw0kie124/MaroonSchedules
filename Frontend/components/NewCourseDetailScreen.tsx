@@ -32,7 +32,7 @@ export function NewCourseDetailScreen() {
     const styles = getStyles(COLORS);
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
-    const { courseId, returnTo } = route.params || {};
+    const { courseId, returnTo, scheduleId: paramScheduleId } = route.params || {};
     const { user } = useUser();
     const userId = user?.id || 'anonymous';
     const [course, setCourse] = useState<any>(null);
@@ -67,6 +67,17 @@ export function NewCourseDetailScreen() {
         // Find the full section object from the course data
         const sectionObj = (course?.sections || []).find((s: any) => s.id === sectionId);
 
+        const proceedWithAdd = (secObj: any) => {
+            // If we came from a specific schedule, add directly without showing the modal
+            if (paramScheduleId) {
+                setSelectedSection(secObj);
+                confirmAddToSchedule(paramScheduleId, secObj);
+            } else {
+                setSelectedSection(secObj);
+                setModalVisible(true);
+            }
+        };
+
         // If the section is closed, show a warning first
         if (sectionObj && !sectionObj.isOpen) {
             Alert.alert(
@@ -77,41 +88,45 @@ export function NewCourseDetailScreen() {
                     {
                         text: 'Add Anyway',
                         style: 'destructive',
-                        onPress: () => {
-                            setSelectedSection(sectionObj);
-                            setModalVisible(true);
-                        },
+                        onPress: () => proceedWithAdd(sectionObj),
                     },
                 ]
             );
         } else {
-            setSelectedSection(sectionObj || { id: sectionId });
-            setModalVisible(true);
+            proceedWithAdd(sectionObj || { id: sectionId });
         }
     };
 
-    const confirmAddToSchedule = async (scheduleId: string) => {
-        if (!selectedSection || isAdding) return;
+    const confirmAddToSchedule = async (targetScheduleId: string, sectionOverride?: any) => {
+        const sec = sectionOverride || selectedSection;
+        if (!sec || isAdding) return;
         
         setIsAdding(true);
         try {
-            await addSectionToSchedule(scheduleId, selectedSection.id, userId);
+            await addSectionToSchedule(targetScheduleId, sec.id, userId);
 
             // Cache the full section object locally so ScheduleDetailScreen can display it
+            // This ensures calendar blocks render immediately with meetings, prof, location
             try {
                 await AsyncStorage.setItem(
-                    `section_cache_${selectedSection.id}`,
-                    JSON.stringify(selectedSection),
+                    `section_cache_${sec.id}`,
+                    JSON.stringify(sec),
                 );
             } catch (_) { /* non-critical */ }
 
             setModalVisible(false);
             
-            // Show success message and stay on the screen
-            const sectionLabel = selectedSection.dept
-                ? `${selectedSection.dept} ${selectedSection.courseNumber} - Sec ${selectedSection.sectionNumber}`
-                : `Section ${selectedSection.sectionNumber || selectedSection.id}`;
-            alert(`${sectionLabel} added to your schedule!`);
+            const sectionLabel = sec.dept
+                ? `${sec.dept} ${sec.courseNumber} - Sec ${sec.sectionNumber}`
+                : `Section ${sec.sectionNumber || sec.id}`;
+
+            // Navigate back to the schedule detail so the user sees the updated calendar
+            if (returnTo === 'ScheduleDetail' && paramScheduleId) {
+                // Go back to ScheduleDetail — useIsFocused will trigger a reload
+                navigation.goBack();
+            } else {
+                alert(`${sectionLabel} added to your schedule!`);
+            }
         } catch (e) {
             alert("Failed to add section.");
         } finally {

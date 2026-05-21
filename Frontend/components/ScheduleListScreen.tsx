@@ -100,7 +100,7 @@ export function ScheduleListScreen() {
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                         <View style={{ flex: 1 }}>
                             <Text style={styles.walletName}>{item.name}</Text>
-                            <Text style={styles.walletDetails}>{item.section_ids?.length || 0} enrolled classes</Text>
+                            <Text style={styles.walletDetails}>{item.sections?.length || item.section_ids?.length || 0} enrolled classes</Text>
                         </View>
                         <Pressable
                             onPress={() => handleDelete(item.schedule_id, item.name)}

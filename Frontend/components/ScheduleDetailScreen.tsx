@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, useWindowDimensions, Pressable } from 'react-native';
 import { useRoute, useNavigation, useIsFocused, CommonActions } from '@react-navigation/native';
 import { fetchSchedules, removeSectionFromSchedule, requestJson } from '../api/client';
 import { useTheme, PrimaryButton, SectionRow, Card } from './SharedUI';
 import { useUser } from '@clerk/clerk-expo';
-import { ChevronLeft, Share2 } from 'lucide-react-native';
+import { ChevronLeft, Share2, AlertTriangle } from 'lucide-react-native';
 import { useShareStore } from '../store/shareStore';
 import { triggerNativeShare } from '../utils/share';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -140,6 +140,41 @@ export function ScheduleDetailScreen() {
         }
     }, [isFocused]);
 
+    /**
+     * Try to get a fully-enriched section object for a bare/stub section.
+     * Checks AsyncStorage cache first, then falls back to the backend API.
+     */
+    const enrichSection = async (sec: any): Promise<any> => {
+        const secId = sec.id || sec.section_id;
+        if (!secId) return sec;
+
+        // 1. Try AsyncStorage cache (saved when user added the section)
+        try {
+            const cached = await AsyncStorage.getItem(`section_cache_${secId}`);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                // Only use if it has actual meeting data
+                if (parsed.meetings?.length || parsed.dept) {
+                    return parsed;
+                }
+            }
+        } catch { /* ignore */ }
+
+        // 2. Fallback: try backend /sections/{id} API
+        try {
+            const full = await requestJson(`/sections/${secId}`);
+            if (full && (full.meetings?.length || full.dept)) {
+                // Cache for next time
+                try {
+                    await AsyncStorage.setItem(`section_cache_${secId}`, JSON.stringify(full));
+                } catch { /* non-critical */ }
+                return full;
+            }
+        } catch { /* ignore */ }
+
+        return sec;
+    };
+
     const loadSchedule = async () => {
         try {
             const data = await fetchSchedules(userId);
@@ -150,20 +185,12 @@ export function ScheduleDetailScreen() {
             const enriched = await Promise.all(
                 (found.sections || []).map(async (sec: any) => {
                     // A bare section has no dept, courseTitle, or sectionNumber
-                    if (!sec.dept && !sec.courseTitle && !sec.name && !sec.sectionNumber) {
-                        const secId = sec.id || sec.section_id;
-                        // 1. Try local AsyncStorage cache (saved when user added the section)
-                        try {
-                            const cached = await AsyncStorage.getItem(`section_cache_${secId}`);
-                            if (cached) return JSON.parse(cached);
-                        } catch { /* ignore */ }
-                        // 2. Fallback: try backend API
-                        try {
-                            const full = await requestJson(`/sections/${secId}`);
-                            return full || sec;
-                        } catch {
-                            return sec;
-                        }
+                    const isBare = !sec.dept && !sec.courseTitle && !sec.name && !sec.sectionNumber;
+                    // Also check if meetings are missing (needed for calendar)
+                    const hasMeetings = sec.meetings?.length > 0 && sec.meetings[0]?.beginTime;
+                    
+                    if (isBare || !hasMeetings) {
+                        return enrichSection(sec);
                     }
                     return sec;
                 })
@@ -175,11 +202,84 @@ export function ScheduleDetailScreen() {
     const handleRemove = async (sectionId: string) => {
         try {
             await removeSectionFromSchedule(scheduleId, sectionId, userId);
-            const updated = { ...schedule, sections: schedule.sections.filter((s: any) => s.section_id !== sectionId) };
+            // Normalize: filter by both id and section_id fields
+            const updated = {
+                ...schedule,
+                sections: schedule.sections.filter((s: any) =>
+                    s.section_id !== sectionId && s.id !== sectionId
+                ),
+            };
             setSchedule(updated);
             loadSchedule(); // background fetch sync
         } catch (e) { alert("Failed to remove."); }
     };
+
+    // ── Conflict Detection ──────────────────────────────────────
+    // Build an array of all rendered grid blocks, then check for overlaps
+    type GridBlock = {
+        secIndex: number;
+        day: string;
+        startMin: number;
+        endMin: number;
+        courseCode: string;
+    };
+
+    const buildGridBlocks = useCallback((): GridBlock[] => {
+        if (!schedule?.sections) return [];
+        const blocks: GridBlock[] = [];
+
+        schedule.sections.forEach((sec: any, idx: number) => {
+            const meeting = sec.meetings?.[0];
+            if (!meeting || !meeting.beginTime || !meeting.endTime) return;
+
+            const startTime = parseTimeToMinutes(meeting.beginTime);
+            const endTime = parseTimeToMinutes(meeting.endTime);
+            if (!startTime || !endTime) return;
+
+            const courseCode = sec.dept
+                ? `${sec.dept} ${sec.courseNumber || ''}`
+                : (sec.courseTitle || sec.name || sec.course_display || sec.id || 'Course');
+
+            meeting.daysOfWeek?.forEach((apiDay: string) => {
+                const gridDay = getGridDay(apiDay);
+                if (!gridDay) return;
+                blocks.push({
+                    secIndex: idx,
+                    day: gridDay,
+                    startMin: startTime,
+                    endMin: endTime,
+                    courseCode,
+                });
+            });
+        });
+
+        return blocks;
+    }, [schedule]);
+
+    /**
+     * Returns a Set of secIndex values that have at least one conflict.
+     */
+    const getConflictingIndices = useCallback((): Set<number> => {
+        const blocks = buildGridBlocks();
+        const conflicting = new Set<number>();
+
+        for (let i = 0; i < blocks.length; i++) {
+            for (let j = i + 1; j < blocks.length; j++) {
+                const a = blocks[i];
+                const b = blocks[j];
+                // Same day and time ranges overlap?
+                if (a.day === b.day && a.startMin < b.endMin && b.startMin < a.endMin) {
+                    conflicting.add(a.secIndex);
+                    conflicting.add(b.secIndex);
+                }
+            }
+        }
+
+        return conflicting;
+    }, [buildGridBlocks]);
+
+    const conflictingIndices = getConflictingIndices();
+    const hasConflicts = conflictingIndices.size > 0;
 
     return (
         <ScrollView style={styles.container} contentContainerStyle={{ padding: 16 }}>
@@ -209,6 +309,15 @@ export function ScheduleDetailScreen() {
                     <Text style={styles.empty}>No classes planned for this schedule.</Text>
                 )}
 
+            {/* ── Conflict Banner ────────────────────────────── */}
+            {hasConflicts && (
+                <View style={styles.conflictBanner}>
+                    <AlertTriangle size={18} color="#FF453A" />
+                    <Text style={styles.conflictBannerText}>
+                        Schedule conflict detected — overlapping classes are highlighted below.
+                    </Text>
+                </View>
+            )}
 
             <View style={styles.weeklyHeader}>
                 <Text style={styles.sectionTitle}>Weekly Grid Layout</Text>
@@ -252,6 +361,17 @@ export function ScheduleDetailScreen() {
                         // Give sections pseudo colors
                         const colors = ['#500000', '#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6'];
                         const blockColor = colors[idx % colors.length];
+                        const isConflicting = conflictingIndices.has(idx);
+
+                        // Course info
+                        const courseCode = sec.dept
+                            ? `${sec.dept} ${sec.courseNumber || ''}`
+                            : (sec.courseTitle || sec.name || sec.course_display || sec.id || 'Course');
+                        const secNum = sec.sectionNumber || sec.section || '';
+                        const profName = sec.instructors?.[0]?.name || '';
+                        const location = meeting.building
+                            ? `${meeting.building} ${meeting.room || ''}`.trim()
+                            : '';
 
                         return meeting.daysOfWeek?.map((apiDay: string) => {
                             const gridDay = getGridDay(apiDay);
@@ -262,29 +382,38 @@ export function ScheduleDetailScreen() {
                             const topOffset = ((startTime - 480) / 60) * ROW_HEIGHT;
                             const height = ((endTime - startTime) / 60) * ROW_HEIGHT;
 
-                            // Safe course code display handling empty depts or ids
-                            const courseCode = sec.dept
-                                ? `${sec.dept} ${sec.courseNumber || ''}`
-                                : (sec.courseTitle || sec.name || sec.course_display || sec.id || 'Course');
-                            const secNum = sec.sectionNumber || sec.section || '';
-
                             return (
                                 <View
-                                    key={`${sec.id}-${gridDay}`}
+                                    key={`${sec.id || sec.section_id}-${gridDay}`}
                                     style={[
                                         styles.courseBlock,
                                         {
                                             left: TIME_COL_WIDTH + dayIndex * DAY_COL_WIDTH + 2,
                                             top: topOffset,
                                             width: DAY_COL_WIDTH - 4,
-                                            height: Math.max(height, 24), // Ensure visual block isn't totally collapsed
+                                            height: Math.max(height, 32),
                                             backgroundColor: blockColor,
                                         },
+                                        isConflicting && styles.conflictBlock,
                                     ]}
                                 >
-                                    <Text style={styles.blockCode} numberOfLines={1}>{courseCode}{secNum ? ` - ${secNum}` : ''}</Text>
-                                    <Text style={styles.blockText} numberOfLines={1}>{meeting.building} {meeting.room}</Text>
-                                    <Text style={styles.blockText} numberOfLines={1}>{meeting.beginTime}</Text>
+                                    {isConflicting && (
+                                        <View style={styles.conflictBadge}>
+                                            <Text style={styles.conflictBadgeText}>⚠</Text>
+                                        </View>
+                                    )}
+                                    <Text style={styles.blockCode} numberOfLines={1}>
+                                        {courseCode}{secNum ? ` - ${secNum}` : ''}
+                                    </Text>
+                                    {profName ? (
+                                        <Text style={styles.blockText} numberOfLines={1}>{profName}</Text>
+                                    ) : null}
+                                    {location ? (
+                                        <Text style={styles.blockText} numberOfLines={1}>{location}</Text>
+                                    ) : null}
+                                    <Text style={styles.blockText} numberOfLines={1}>
+                                        {meeting.beginTime} - {meeting.endTime}
+                                    </Text>
                                 </View>
                             );
                         });
@@ -305,6 +434,25 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     sectionTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textPrimary },
     empty: { textAlign: 'center', marginTop: 20, color: COLORS.textSecondary, marginBottom: 24 },
     weeklyHeader: { marginTop: 32, marginBottom: 12 },
+    // Conflict banner
+    conflictBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        marginTop: 16,
+        padding: 14,
+        borderRadius: 14,
+        backgroundColor: 'rgba(255,69,58,0.12)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,69,58,0.3)',
+    },
+    conflictBannerText: {
+        flex: 1,
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#FF453A',
+        lineHeight: 20,
+    },
     // Grid Styles
     gridHeader: { flexDirection: 'row', paddingBottom: 8 },
     dayHeaderText: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary },
@@ -323,6 +471,23 @@ const getStyles = (COLORS: any) => StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 2,
         elevation: 2,
+        overflow: 'hidden',
+    },
+    conflictBlock: {
+        borderWidth: 2,
+        borderColor: '#FF453A',
+        shadowColor: '#FF453A',
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+    },
+    conflictBadge: {
+        position: 'absolute',
+        top: 1,
+        right: 2,
+        zIndex: 1,
+    },
+    conflictBadgeText: {
+        fontSize: 9,
     },
     blockCode: { fontSize: 10, fontWeight: '700', color: 'white' },
     blockText: { fontSize: 8, color: 'white', opacity: 0.9 },
