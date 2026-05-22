@@ -6,6 +6,7 @@ import { useTheme, Card, SectionRow, PrimaryButton } from './SharedUI';
 import { useUser } from '@clerk/clerk-expo';
 import { Calendar, ChevronRight } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { findApForCourse } from '../data/apEquivalencies';
 
 // Parse a prereq string into alternating plain-text and course-code tokens
 // e.g. "CSCE 121 or MATH 151" → [{type:'course', value:'CSCE 121'}, {type:'text', value:' or '}, ...]
@@ -32,7 +33,7 @@ export function NewCourseDetailScreen() {
     const styles = getStyles(COLORS);
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
-    const { courseId, returnTo } = route.params || {};
+    const { courseId, returnTo, scheduleId: paramScheduleId } = route.params || {};
     const { user } = useUser();
     const userId = user?.id || 'anonymous';
     const [course, setCourse] = useState<any>(null);
@@ -67,6 +68,17 @@ export function NewCourseDetailScreen() {
         // Find the full section object from the course data
         const sectionObj = (course?.sections || []).find((s: any) => s.id === sectionId);
 
+        const proceedWithAdd = (secObj: any) => {
+            // If we came from a specific schedule, add directly without showing the modal
+            if (paramScheduleId) {
+                setSelectedSection(secObj);
+                confirmAddToSchedule(paramScheduleId, secObj);
+            } else {
+                setSelectedSection(secObj);
+                setModalVisible(true);
+            }
+        };
+
         // If the section is closed, show a warning first
         if (sectionObj && !sectionObj.isOpen) {
             Alert.alert(
@@ -77,41 +89,45 @@ export function NewCourseDetailScreen() {
                     {
                         text: 'Add Anyway',
                         style: 'destructive',
-                        onPress: () => {
-                            setSelectedSection(sectionObj);
-                            setModalVisible(true);
-                        },
+                        onPress: () => proceedWithAdd(sectionObj),
                     },
                 ]
             );
         } else {
-            setSelectedSection(sectionObj || { id: sectionId });
-            setModalVisible(true);
+            proceedWithAdd(sectionObj || { id: sectionId });
         }
     };
 
-    const confirmAddToSchedule = async (scheduleId: string) => {
-        if (!selectedSection || isAdding) return;
+    const confirmAddToSchedule = async (targetScheduleId: string, sectionOverride?: any) => {
+        const sec = sectionOverride || selectedSection;
+        if (!sec || isAdding) return;
         
         setIsAdding(true);
         try {
-            await addSectionToSchedule(scheduleId, selectedSection.id, userId);
+            await addSectionToSchedule(targetScheduleId, sec.id, userId);
 
             // Cache the full section object locally so ScheduleDetailScreen can display it
+            // This ensures calendar blocks render immediately with meetings, prof, location
             try {
                 await AsyncStorage.setItem(
-                    `section_cache_${selectedSection.id}`,
-                    JSON.stringify(selectedSection),
+                    `section_cache_${sec.id}`,
+                    JSON.stringify(sec),
                 );
             } catch (_) { /* non-critical */ }
 
             setModalVisible(false);
             
-            // Show success message and stay on the screen
-            const sectionLabel = selectedSection.dept
-                ? `${selectedSection.dept} ${selectedSection.courseNumber} - Sec ${selectedSection.sectionNumber}`
-                : `Section ${selectedSection.sectionNumber || selectedSection.id}`;
-            alert(`${sectionLabel} added to your schedule!`);
+            const sectionLabel = sec.dept
+                ? `${sec.dept} ${sec.courseNumber} - Sec ${sec.sectionNumber}`
+                : `Section ${sec.sectionNumber || sec.id}`;
+
+            // Navigate back to the schedule detail so the user sees the updated calendar
+            if (returnTo === 'ScheduleDetail' && paramScheduleId) {
+                // Go back to ScheduleDetail — useIsFocused will trigger a reload
+                navigation.goBack();
+            } else {
+                alert(`${sectionLabel} added to your schedule!`);
+            }
         } catch (e) {
             alert("Failed to add section.");
         } finally {
@@ -142,11 +158,26 @@ export function NewCourseDetailScreen() {
                     />
                 </View>
                 <Text style={[styles.subtitle, { marginBottom: course.prerequisites ? 6 : 0 }]}>{course.description || "No description available."}</Text>
-                {course.prerequisites && (
+                {course.prerequisites && (() => {
+                    const tokens = parsePrereqTokens(course.prerequisites);
+                    // Collect AP info for each prerequisite course
+                    const prereqApInfo = new Map<string, { apExam: string; minScore: number }[]>();
+                    for (const ct of tokens.filter(t => t.type === 'course')) {
+                        const apMatches = findApForCourse(ct.value);
+                        if (apMatches.length > 0) {
+                            const byExam = new Map<string, number>();
+                            for (const m of apMatches) {
+                                const cur = byExam.get(m.apExam);
+                                if (!cur || m.apScore < cur) byExam.set(m.apExam, m.apScore);
+                            }
+                            prereqApInfo.set(ct.value, Array.from(byExam.entries()).map(([apExam, minScore]) => ({ apExam, minScore })));
+                        }
+                    }
+                    return (
                     <View style={{ marginTop: 6 }}>
                         <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.textTertiary, letterSpacing: 0.4, marginBottom: 6, textTransform: 'uppercase' }}>Prerequisites</Text>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                            {parsePrereqTokens(course.prerequisites).map((token, idx) =>
+                            {tokens.map((token, idx) =>
                                 token.type === 'course' ? (
                                     <Pressable
                                         key={idx}
@@ -171,11 +202,45 @@ export function NewCourseDetailScreen() {
                                 )
                             )}
                         </View>
+                        {/* Inline AP credit info for prerequisite courses */}
+                        {prereqApInfo.size > 0 && (
+                            <View style={{ marginTop: 8, gap: 6 }}>
+                                {Array.from(prereqApInfo.entries()).map(([course, aps]) => (
+                                    <Pressable
+                                        key={course}
+                                        onPress={() => navigation.navigate('APEquivalency', { initialFilter: course })}
+                                        style={({ pressed }) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            backgroundColor: pressed ? '#30D15820' : '#30D15810',
+                                            borderRadius: 8,
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 6,
+                                            borderWidth: 1,
+                                            borderColor: '#30D15830',
+                                            gap: 6,
+                                        })}
+                                    >
+                                        <Text style={{ fontSize: 13 }}>🎓</Text>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#30D158' }}>
+                                                {course} — skippable via AP
+                                            </Text>
+                                            <Text style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 1 }}>
+                                                {aps.map(a => `${a.apExam} (${a.minScore}+)`).join(', ')}
+                                            </Text>
+                                        </View>
+                                        <ChevronRight size={14} color="#30D158" />
+                                    </Pressable>
+                                ))}
+                            </View>
+                        )}
                         <Text style={{ fontSize: 11, color: COLORS.textTertiary, marginTop: 6 }}>
                             Tap a course to see its AP equivalency
                         </Text>
                     </View>
-                )}
+                    );
+                })()}
             </View>
 
             {/* Schedule Planner button */}
