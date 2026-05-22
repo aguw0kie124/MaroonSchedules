@@ -703,7 +703,13 @@ export function Profile() {
       searchUsers(query, user.id, 8)
         .then((results) => {
           if (!cancelled) {
-            setFriendSearchResults(results.filter((entry) => entry.id !== user.id));
+            const filtered = results.filter((entry) => entry.id !== user.id);
+            filtered.sort((a: any, b: any) => {
+              const diff = (b.mutual_count || 0) - (a.mutual_count || 0);
+              if (diff !== 0) return diff;
+              return (a.full_name || a.name || '').localeCompare(b.full_name || b.name || '');
+            });
+            setFriendSearchResults(filtered);
           }
         })
         .catch((error) => console.warn('Failed to search users', error))
@@ -1477,9 +1483,16 @@ export function Profile() {
     return <View style={styles.section}>{content}</View>;
   }
 
-  const renderConnectionRow = (item: any) => {
+  const renderConnectionRow = (item: any, showMutuals: boolean = false) => {
     const displayName = item.full_name || item.name || 'Aggie User';
     const subtitle = item.username ? `@${item.username}` : item.major || null;
+    const mutualCount = Number(item.mutual_count || 0);
+    const mutualLabel =
+      showMutuals && mutualCount > 0
+        ? mutualCount === 1
+          ? '1 mutual friend'
+          : `${mutualCount} mutual friends`
+        : null;
     return (
     <Pressable
       key={item.id}
@@ -1505,7 +1518,9 @@ export function Profile() {
       </View>
       <View style={{ flex: 1, marginLeft: 12 }}>
         <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 15 }}>{displayName}</Text>
-        {subtitle ? (
+        {mutualLabel ? (
+          <Text style={{ color: COLORS.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{mutualLabel}</Text>
+        ) : subtitle ? (
           <Text style={{ color: COLORS.textTertiary, fontSize: 13 }} numberOfLines={1}>{subtitle}</Text>
         ) : null}
       </View>
@@ -1596,7 +1611,7 @@ export function Profile() {
                   {searchingFriends ? (
                     <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
                   ) : friendSearchResults.length > 0 ? (
-                    friendSearchResults.map((item) => renderConnectionRow(item))
+                    friendSearchResults.map((item) => renderConnectionRow(item, true))
                   ) : (
                     <View style={styles.modalEmptyState}>
                       <Text style={{ color: COLORS.textTertiary }}>No users found.</Text>

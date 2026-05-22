@@ -838,6 +838,27 @@ export async function searchUsers(query: string, userId?: string, limit = 30): P
 }
 
 
+export async function getMutualFriends(
+    targetUserId: string,
+    userId?: string,
+): Promise<{ count: number; users: any[] }> {
+    const requesterId = userId || connectedUserId;
+    if (!requesterId || !targetUserId) return { count: 0, users: [] };
+    try {
+        const res = await feedFetch(`/chat/users/${targetUserId}/mutuals`);
+        if (!res.ok) return { count: 0, users: [] };
+        const data = await res.json();
+        return {
+            count: Number(data?.count) || 0,
+            users: Array.isArray(data?.users) ? data.users : [],
+        };
+    } catch (e) {
+        if (__DEV__) console.warn('[NativeFeeds] getMutualFriends error', e);
+        return { count: 0, users: [] };
+    }
+}
+
+
 export async function reportContent(params: {
     reporteeId: string;
     postType: 'review' | 'crowdping' | 'post' | 'reel';

@@ -717,6 +717,84 @@ def get_mutual_friend_counts(searcher_id: str, candidate_ids: list[str]) -> dict
     return {row["candidate_id"]: int(row.get("mutual_count") or 0) for row in rows if row.get("candidate_id")}
 
 
+def list_mutual_friends(searcher_id: str, target_id: str, limit: int = 50) -> list[dict]:
+    """Return user profiles for the friends shared between searcher and target."""
+    if not searcher_id or not target_id or searcher_id == target_id:
+        return []
+
+    blocked_ids: set[str] = set()
+    try:
+        from repositories import feed_repository
+
+        blocked_ids = set(feed_repository.get_block_relationship_user_ids(searcher_id))
+    except Exception:
+        blocked_ids = set()
+
+    with get_pool().connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                WITH searcher_friends AS (
+                    SELECT CASE
+                        WHEN requester_id = %s THEN recipient_id
+                        ELSE requester_id
+                    END AS friend_id
+                    FROM network_connections
+                    WHERE status = 'accepted'
+                      AND (requester_id = %s OR recipient_id = %s)
+                ),
+                target_friends AS (
+                    SELECT CASE
+                        WHEN requester_id = %s THEN recipient_id
+                        ELSE requester_id
+                    END AS friend_id
+                    FROM network_connections
+                    WHERE status = 'accepted'
+                      AND (requester_id = %s OR recipient_id = %s)
+                )
+                SELECT u.clerk_id, u.full_name, u.username, u.profile_image_url
+                FROM searcher_friends sf
+                INNER JOIN target_friends tf ON sf.friend_id = tf.friend_id
+                INNER JOIN users u ON u.clerk_id = sf.friend_id
+                WHERE sf.friend_id NOT IN (%s, %s)
+                LIMIT %s
+                """,
+                (
+                    searcher_id,
+                    searcher_id,
+                    searcher_id,
+                    target_id,
+                    target_id,
+                    target_id,
+                    searcher_id,
+                    target_id,
+                    limit,
+                ),
+            )
+            rows = cur.fetchall() or []
+
+    results: list[dict] = []
+    for row in rows:
+        clerk_id = row.get("clerk_id")
+        if not clerk_id or clerk_id in blocked_ids:
+            continue
+        full_name = _safe_decrypt(row.get("full_name")) or ""
+        username = row.get("username") or ""
+        display_name = full_name or username or "Aggie User"
+        results.append(
+            {
+                "id": clerk_id,
+                "full_name": full_name or None,
+                "username": username or None,
+                "name": display_name,
+                "profile_image_url": row.get("profile_image_url"),
+            }
+        )
+
+    results.sort(key=lambda r: (r.get("full_name") or r.get("name") or "").lower())
+    return results
+
+
 def search_users(searcher_id: str, query: str, limit: int = 30) -> list[dict]:
     """Search users by name/email/major. Returns all users when query is empty
     so the UI can show suggestions immediately (Instagram-style autofill)."""
@@ -797,13 +875,12 @@ def search_users(searcher_id: str, query: str, limit: int = 30) -> list[dict]:
         for entry in results:
             entry["mutual_count"] = mutual_counts.get(entry["id"], 0)
 
-        if not normalized_query:
-            results.sort(
-                key=lambda r: (
-                    -(r.get("mutual_count") or 0),
-                    r.get("full_name") or r.get("name") or "",
-                ),
-            )
+        results.sort(
+            key=lambda r: (
+                -(r.get("mutual_count") or 0),
+                r.get("full_name") or r.get("name") or "",
+            ),
+        )
 
     return results
 

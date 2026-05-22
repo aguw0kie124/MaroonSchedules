@@ -37,7 +37,7 @@ import { useUser } from '@clerk/clerk-expo';
 
 import { useTheme, getDefaultAccentColor, WallpaperWrapper } from '../SharedUI';
 import { ScalePressable } from '../common/Motion';
-import { addFriend, getUserPingFeed, removeFriend } from '../../services/socialFeedService';
+import { addFriend, getMutualFriends, getUserPingFeed, removeFriend } from '../../services/socialFeedService';
 import { 
   mapActivityToPing, 
   categoryMeta, 
@@ -59,6 +59,7 @@ export default function PublicProfileScreen() {
   const [activeCommentsPing, setActiveCommentsPing] = useState<any | null>(null);
   const [selectedPing, setSelectedPing] = useState<any | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [showMutualsModal, setShowMutualsModal] = useState(false);
 
   // 1. Fetch Basic Profile (Skip if anonymous)
   const { data: profile, isLoading: isLoadingProfile, refetch: refetchProfile } = useQuery({
@@ -93,6 +94,14 @@ export default function PublicProfileScreen() {
 
   const isMe = currentUser?.id === targetUserId;
   const relationshipStatus = profile?.relationship_status || 'none';
+
+  const { data: mutuals } = useQuery({
+    queryKey: ['public-profile-mutuals', targetUserId, currentUser?.id],
+    queryFn: () => getMutualFriends(targetUserId, currentUser?.id),
+    enabled: !!currentUser?.id && !isMe && !isAnonymous,
+  });
+  const mutualCount = mutuals?.count ?? 0;
+  const mutualUsers = mutuals?.users ?? [];
   const connectionMeta = useMemo(() => {
     if (relationshipStatus === 'accepted') {
       return {
@@ -451,13 +460,24 @@ export default function PublicProfileScreen() {
                <Text style={currentStyles.modernStatLabel}>Friends</Text>
             </ScalePressable>
 
-            <ScalePressable 
+            <ScalePressable
               containerStyle={{ flex: 1 }}
               style={currentStyles.modernStatCard}
             >
                <Text style={currentStyles.modernStatValue}>{userPings.length}</Text>
                <Text style={currentStyles.modernStatLabel}>Pings</Text>
             </ScalePressable>
+
+            {!isMe && !isAnonymous && mutualCount > 0 && (
+              <ScalePressable
+                containerStyle={{ flex: 1 }}
+                style={currentStyles.modernStatCard}
+                onPress={() => setShowMutualsModal(true)}
+              >
+                <Text style={currentStyles.modernStatValue}>{mutualCount}</Text>
+                <Text style={currentStyles.modernStatLabel}>Mutuals</Text>
+              </ScalePressable>
+            )}
 
             {!isMe && !isAnonymous && (
               <ScalePressable 
@@ -501,6 +521,81 @@ export default function PublicProfileScreen() {
           onClose={() => setActiveCommentsPing(null)}
         />
       )}
+
+      <Modal
+        visible={showMutualsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMutualsModal(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' }}
+          onPress={() => setShowMutualsModal(false)}
+        >
+          <Pressable
+            style={{
+              width: width * 0.9,
+              maxHeight: '70%',
+              backgroundColor: COLORS.background,
+              borderRadius: 24,
+              borderWidth: 1,
+              borderColor: COLORS.border,
+              overflow: 'hidden',
+            }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+              <Text style={{ flex: 1, color: COLORS.textPrimary, fontWeight: '800', fontSize: 17 }}>
+                Mutual Friends
+              </Text>
+              <ScalePressable onPress={() => setShowMutualsModal(false)} style={{ padding: 4 }}>
+                <X size={20} color={COLORS.textTertiary} />
+              </ScalePressable>
+            </View>
+            <ScrollView contentContainerStyle={{ paddingVertical: 8 }}>
+              {mutualUsers.length === 0 ? (
+                <Text style={{ color: COLORS.textTertiary, textAlign: 'center', padding: 24 }}>
+                  No mutual friends yet.
+                </Text>
+              ) : (
+                mutualUsers.map((item: any) => {
+                  const name = item.full_name || item.name || item.username || 'Aggie User';
+                  return (
+                    <Pressable
+                      key={item.id}
+                      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 16 }}
+                      onPress={() => {
+                        setShowMutualsModal(false);
+                        navigation.navigate('PublicProfile', {
+                          targetUserId: item.id,
+                          targetUserName: name,
+                          targetUserImage: item.profile_image_url || null,
+                          isAnonymous: false,
+                        });
+                      }}
+                    >
+                      {item.profile_image_url ? (
+                        <Image source={{ uri: item.profile_image_url }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+                      ) : (
+                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: COLORS.textPrimary, fontWeight: '700' }}>{name[0]}</Text>
+                        </View>
+                      )}
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 15 }}>{name}</Text>
+                        {item.username ? (
+                          <Text style={{ color: COLORS.textTertiary, fontSize: 13 }} numberOfLines={1}>@{item.username}</Text>
+                        ) : null}
+                      </View>
+                      <ChevronRight size={18} color={COLORS.textTertiary} />
+                    </Pressable>
+                  );
+                })
+              )}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

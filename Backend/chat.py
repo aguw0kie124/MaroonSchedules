@@ -207,6 +207,14 @@ async def get_public_profile(clerk_id: str, auth_user_id: Optional[str] = Depend
     except Exception:
         friend_count = 0
 
+    mutual_count = 0
+    if auth_user_id and auth_user_id != clerk_id:
+        try:
+            counts = user_repository.get_mutual_friend_counts(auth_user_id, [clerk_id])
+            mutual_count = int(counts.get(clerk_id, 0))
+        except Exception:
+            mutual_count = 0
+
     return {
         "clerk_id": profile["clerk_id"],
         "full_name": profile.get("full_name") or "Aggie User",
@@ -218,6 +226,7 @@ async def get_public_profile(clerk_id: str, auth_user_id: Optional[str] = Depend
         "website": profile.get("website"),
         "relationship_status": relationship_status,
         "friend_count": friend_count,
+        "mutual_count": mutual_count,
     }
 
 # --- Feed Proxy (Now 100% Native) ---
@@ -861,6 +870,20 @@ async def search_users_for_friends(
         _ensure_social_schema()
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only search friends for your own account")
         return user_repository.search_users(clerk_id, query or "", limit=limit)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/users/{target_clerk_id}/mutuals")
+async def list_mutuals_with(
+    target_clerk_id: str,
+    limit: int = Query(50, ge=1, le=100),
+    auth_user_id: str = Depends(require_auth),
+):
+    try:
+        _ensure_social_schema()
+        users = user_repository.list_mutual_friends(auth_user_id, target_clerk_id, limit=limit)
+        return {"count": len(users), "users": users}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
