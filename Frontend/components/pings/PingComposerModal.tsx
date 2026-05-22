@@ -26,9 +26,8 @@ import {
   Clock,
   Image as ImageIcon,
   Pizza,
-  Users,
+  GraduationCap,
   Sparkles,
-  Flame,
   Megaphone,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -44,13 +43,10 @@ import { addPing, initializeFeedUser, uploadMediaImage } from '../../services/so
 import { buildCampusDirectory, getCanonicalLocationName } from '../places/campusData';
 
 export type PingCategory =
-  | 'Free Food'
-  | 'Hangout'
-  | 'Study'
-  | 'Show'
-  | 'Sports'
-  | 'Popup'
-  | 'Heads Up';
+  | 'Food'
+  | 'Academic'
+  | 'Heads Up'
+  | 'Other';
 
 export type TimePreset = 'now' | 'soon' | 'tonight' | 'tomorrow';
 
@@ -61,13 +57,10 @@ export interface ComposerGeoLocation {
 }
 
 export const PING_CATEGORIES: Array<{ id: PingCategory; accent: string; Icon: any }> = [
-  { id: 'Free Food', accent: '#E48B3D', Icon: Pizza },
-  { id: 'Hangout', accent: '#D85F8D', Icon: Users },
-  { id: 'Study', accent: '#6888E8', Icon: Sparkles },
-  { id: 'Show', accent: '#855FF0', Icon: Flame },
-  { id: 'Sports', accent: '#3CA86E', Icon: Flame },
-  { id: 'Popup', accent: '#4B8AC9', Icon: Megaphone },
+  { id: 'Food', accent: '#E48B3D', Icon: Pizza },
+  { id: 'Academic', accent: '#6888E8', Icon: GraduationCap },
   { id: 'Heads Up', accent: '#CC5454', Icon: Megaphone },
+  { id: 'Other', accent: '#7A889B', Icon: Sparkles },
 ];
 
 export const TIME_PRESETS: Array<{ id: TimePreset; label: string }> = [
@@ -141,7 +134,7 @@ export const PingComposerModal: React.FC<PingComposerModalProps> = ({
   const { activeTargetName, advanceStep } = useTour();
   const [composerTitle, setComposerTitle] = useState('');
   const [composerBody, setComposerBody] = useState('');
-  const [composerCategory, setComposerCategory] = useState<PingCategory>('Popup');
+  const [composerCategory, setComposerCategory] = useState<PingCategory>('Other');
   const [composerTimePreset, setComposerTimePreset] = useState<TimePreset>('now');
   const [composerDurationHours, setComposerDurationHours] = useState<number>(3);
   const [locationQuery, setLocationQuery] = useState('');
@@ -164,7 +157,7 @@ export const PingComposerModal: React.FC<PingComposerModalProps> = ({
   const resetComposer = useCallback(() => {
     setComposerTitle('');
     setComposerBody('');
-    setComposerCategory('Popup');
+    setComposerCategory('Other');
     setComposerTimePreset('now');
     setComposerDurationHours(3);
     setLocationQuery('');

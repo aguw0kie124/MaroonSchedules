@@ -97,13 +97,10 @@ import { useSessionStore } from '../store/sessionStore';
 import { resolveDisplayName } from '../utils/userUtils';
 
 type PingCategory =
-  | 'Free Food'
-  | 'Hangout'
-  | 'Study'
-  | 'Show'
-  | 'Sports'
-  | 'Popup'
-  | 'Heads Up';
+  | 'Food'
+  | 'Academic'
+  | 'Heads Up'
+  | 'Other';
 
 type FeedFilter = 'All' | 'Friends' | PingCategory;
 
@@ -168,13 +165,10 @@ interface PingFeedPage {
 const PING_PAGE_SIZE = 10;
 
 const PING_CATEGORIES: Array<{ id: PingCategory; accent: string; Icon: any }> = [
-  { id: 'Free Food', accent: '#E48B3D', Icon: Pizza },
-  { id: 'Hangout', accent: '#D85F8D', Icon: Users },
-  { id: 'Study', accent: '#6888E8', Icon: GraduationCap },
-  { id: 'Show', accent: '#855FF0', Icon: Flame },
-  { id: 'Sports', accent: '#3CA86E', Icon: Flame },
-  { id: 'Popup', accent: '#4B8AC9', Icon: Megaphone },
+  { id: 'Food', accent: '#E48B3D', Icon: Pizza },
+  { id: 'Academic', accent: '#6888E8', Icon: GraduationCap },
   { id: 'Heads Up', accent: '#CC5454', Icon: Megaphone },
+  { id: 'Other', accent: '#7A889B', Icon: Sparkles },
 ];
 
 const TIME_PRESETS: Array<{ id: TimePreset; label: string }> = [
@@ -185,14 +179,22 @@ const TIME_PRESETS: Array<{ id: TimePreset; label: string }> = [
 ];
 
 export function categoryMeta(category?: string | null) {
-  const normalizedCategory = category?.trim();
+  const normalizedCategory = normalizePingCategory(category);
   return (
     PING_CATEGORIES.find((entry) => entry.id === normalizedCategory) || {
-      id: normalizedCategory || 'General',
+      id: normalizedCategory || 'Other',
       accent: '#7A889B',
       Icon: Sparkles,
     }
   );
+}
+
+function normalizePingCategory(category?: string | null): PingCategory {
+  const normalized = category?.trim().toLowerCase();
+  if (normalized === 'food' || normalized === 'free food') return 'Food';
+  if (normalized === 'academic' || normalized === 'study') return 'Academic';
+  if (normalized === 'heads up') return 'Heads Up';
+  return 'Other';
 }
 
 function flattenPingFeedPages(data: InfiniteData<PingFeedPage> | undefined): PingCard[] {
@@ -377,12 +379,9 @@ function resolveMediaUrl(url: string | null | undefined): string | null {
 }
 
 function mapOfficialEventCategory(event: FeaturedEvent): PingCategory {
-  if (event.categories?.food) return 'Free Food';
-  if (event.categories?.sports) return 'Sports';
-  if (event.categories?.academic) return 'Study';
-  if (event.categories?.entertainment) return 'Show';
-  if (event.categories?.social) return 'Hangout';
-  return 'Popup';
+  if (event.categories?.food) return 'Food';
+  if (event.categories?.academic) return 'Academic';
+  return 'Other';
 }
 
 export function mapActivityToPing(activity: any, currentUser: any, userMap: Map<string, string>): PingCard {
@@ -698,7 +697,7 @@ export function CampusPingsScreen() {
         }
         return friendIds.has(String(ping.userId));
       }
-      return ping.category === categoryFilter;
+      return normalizePingCategory(ping.category) === categoryFilter;
     });
   }, [categoryFilter, feedPings, friendIds]);
 
@@ -1473,7 +1472,7 @@ export function CampusPingsScreen() {
   const renderPingCard = ({ item }: { item: PingCard }) => {
     const canDelete = item.userId === user?.id;
     const canModerateAuthor = !!user?.id && !!item.userId && item.userId !== user.id;
-    const normalizedCategory = item.category?.trim() || null;
+    const normalizedCategory = item.category?.trim() ? normalizePingCategory(item.category) : null;
     const hasCategory = Boolean(normalizedCategory);
     const { Icon, accent } = categoryMeta(normalizedCategory);
     const hasImage = !!item.imageUrl;
