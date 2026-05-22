@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Awaitable, Callable, Iterable
 
 from routers import traffic
@@ -19,6 +19,15 @@ TRANSIT_VEHICLES_REFRESH_SECONDS = max(5, int(os.environ.get("TRANSIT_VEHICLES_R
 DINING_REFRESH_SECONDS = max(60, int(os.environ.get("DINING_REFRESH_SECONDS", "300")))
 PLACE_DETAILS_REFRESH_SECONDS = max(30, int(os.environ.get("PLACE_DETAILS_REFRESH_SECONDS", "90")))
 PLACE_DETAILS_WARM_LIMIT = max(6, int(os.environ.get("PLACE_DETAILS_WARM_LIMIT", "18")))
+TRANSIT_SCHEDULE_SCRAPE_ENABLED = os.environ.get(
+    "TRANSIT_SCHEDULE_SCRAPE_ENABLED", "false"
+).strip().lower() not in {"0", "false", "no"}
+TRANSIT_SCHEDULE_SCRAPE_SECONDS = max(
+    3600, int(os.environ.get("TRANSIT_SCHEDULE_SCRAPE_SECONDS", "86400"))
+)
+TRANSIT_SCHEDULE_SCRAPE_DAYS = max(
+    1, int(os.environ.get("TRANSIT_SCHEDULE_SCRAPE_DAYS", "45"))
+)
 
 _TaskFactory = Callable[[], Awaitable[None]]
 
@@ -163,6 +172,21 @@ def _place_ids_to_warm() -> list[str]:
     return place_ids
 
 
+def _refresh_transit_schedules() -> object:
+    # Lazy import: the scraper module pulls in `requests` and threading state
+    # we don't want loaded at boot unless this job is actually enabled.
+    from scripts import scrape_semester_bus_schedules as scraper
+
+    start_date = date.today()
+    end_date = start_date + timedelta(days=TRANSIT_SCHEDULE_SCRAPE_DAYS)
+    _log(
+        f"transit-schedules scrape window: {start_date} to {end_date} "
+        f"({TRANSIT_SCHEDULE_SCRAPE_DAYS} days)"
+    )
+    scraper.scrape_all(start_date, end_date)
+    return {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()}
+
+
 def _refresh_place_details() -> object:
     warmed = []
     for place_id in _place_ids_to_warm():
@@ -185,7 +209,7 @@ async def _run_periodic(name: str, interval_seconds: int, fn: Callable[[], objec
 
 
 def _job_specs() -> list[tuple[str, int, Callable[[], object]]]:
-    return [
+    specs: list[tuple[str, int, Callable[[], object]]] = [
         ("places", PLACES_REFRESH_SECONDS, _refresh_places),
         ("recreation", RECREATION_REFRESH_SECONDS, _refresh_recreation),
         ("transit-routes", TRANSIT_REFRESH_SECONDS, _refresh_transit_routes),
@@ -194,6 +218,11 @@ def _job_specs() -> list[tuple[str, int, Callable[[], object]]]:
         ("dining", DINING_REFRESH_SECONDS, _refresh_dining),
         ("place-details", PLACE_DETAILS_REFRESH_SECONDS, _refresh_place_details),
     ]
+    if TRANSIT_SCHEDULE_SCRAPE_ENABLED:
+        specs.append(
+            ("transit-schedules", TRANSIT_SCHEDULE_SCRAPE_SECONDS, _refresh_transit_schedules)
+        )
+    return specs
 
 
 async def start_snapshot_jobs() -> list[asyncio.Task]:

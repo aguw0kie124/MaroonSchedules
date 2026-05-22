@@ -75,6 +75,22 @@ function buildStepWindows(plan: CampusTransitPlan, depart: Date) {
   });
 }
 
+function getScheduleFreshnessLabel(plan: CampusTransitPlan): string | null {
+  switch (plan.scheduleSource) {
+    case 'upstream_cached':
+      return 'Schedule from cached campus data';
+    case 'db_fallback':
+      return 'Using cached campus schedule';
+    case 'unavailable':
+      return plan.serviceDate
+        ? `No published schedule for ${plan.serviceDate}`
+        : 'Live schedule unavailable';
+    case 'upstream_live':
+    default:
+      return null;
+  }
+}
+
 function buildArrivalSummary(plan: CampusTransitPlan, depart: Date) {
   const walkToStopMin = Math.max(1, Math.round((plan.walkingToStopMeters || 0) / 84));
   const waitMin = plan.estimatedWaitMinutes ?? 0;
@@ -212,6 +228,7 @@ export function TransitTripResultsScreen() {
               const tripWindow = getTripWindow(plan, plannedTimestamp, timingMode);
               const arrival = buildArrivalSummary(plan, tripWindow.depart);
               const hasTransfers = plan.transferCount > 0;
+              const freshnessLabel = getScheduleFreshnessLabel(plan);
               return (
                 <Pressable
                   key={`${plan.routeKey}-${index}`}
@@ -290,6 +307,10 @@ export function TransitTripResultsScreen() {
                     </View>
                     <ChevronRight size={16} color={COLORS.textTertiary} style={{ alignSelf: 'center', marginRight: 8 }} />
                   </View>
+
+                  {freshnessLabel ? (
+                    <Text style={styles.freshnessText}>{freshnessLabel}</Text>
+                  ) : null}
                 </Pressable>
               );
             })}
@@ -371,6 +392,12 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       fontSize: 14,
       textAlign: 'center',
       lineHeight: 20,
+    },
+    freshnessText: {
+      color: COLORS.textTertiary,
+      fontSize: 11,
+      fontStyle: 'italic',
+      marginTop: -4,
     },
     optionStack: {
       gap: 12,

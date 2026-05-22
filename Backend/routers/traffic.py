@@ -988,10 +988,26 @@ class AggieSpiritProxy:
         direction_name: str,
         service_date: str,
     ) -> List[Dict[str, Any]]:
+        rows, _ = self.get_stop_schedule_with_meta(
+            route_number, stop_code, direction_name, service_date
+        )
+        return rows
+
+    def get_stop_schedule_with_meta(
+        self,
+        route_number: str,
+        stop_code: str,
+        direction_name: str,
+        service_date: str,
+    ) -> tuple[List[Dict[str, Any]], str]:
+        """Same as get_stop_schedule but also returns the source:
+        "upstream_cached" if served from cache, "upstream_live" on fresh fetch,
+        or "unavailable" on error.
+        """
         cache_key = f"traffic:transit:stop_schedule:v2:{route_number}:{stop_code}:{direction_name}:{service_date}"
         cached = cache_service.get_json(cache_key)
         if cached is not None:
-            return cached
+            return cached, "upstream_cached"
 
         try:
             payload = json.dumps({
@@ -1007,7 +1023,7 @@ class AggieSpiritProxy:
             )
             schedules = response.get("routeStopSchedules") or []
             if not schedules:
-                return []
+                return [], "upstream_live"
             merged_times: List[Dict[str, Any]] = []
             for schedule in schedules:
                 schedule_direction_name = str(schedule.get("directionName") or "").strip()
@@ -1017,11 +1033,15 @@ class AggieSpiritProxy:
                         "sourceDirectionName": schedule_direction_name,
                     })
             if merged_times:
-                cache_service.set_json(cache_key, merged_times, 3600)
-            return merged_times
+                # Same-day plans are vulnerable to mid-day schedule revisions;
+                # future-date schedules change rarely. Shorter TTL for today.
+                today_str = _local_service_date(datetime.now(ZoneInfo("UTC")))
+                ttl_seconds = 300 if service_date == today_str else 3600
+                cache_service.set_json(cache_key, merged_times, ttl_seconds)
+            return merged_times, "upstream_live"
         except Exception as exc:
             print(f"[TransitProxy] Stop schedule error for route {route_number} stop {stop_code}: {exc}")
-            return []
+            return [], "unavailable"
 
     def get_route_timetable(self, route_key: str, max_stops: int = 12) -> Dict[str, Any]:
         try:
@@ -1096,6 +1116,9 @@ class AggieSpiritProxy:
                 (item.get("stopCode"), item.get("directionKey")): item
                 for item in nearby_stops
             }
+            # service_date is intentionally "today": this is the live timetable
+            # (now-only). For future-date schedules, the trip planner calls
+            # transit_proxy.get_stop_schedule() directly with the planned date.
             now_utc = datetime.now(ZoneInfo("UTC"))
             service_date = _local_service_date(now_utc)
             entries: List[Optional[Dict[str, Any]]] = [None] * len(unique_stops)
@@ -1803,25 +1826,30 @@ def get_transit_trip_plan_bulk(request: Request, bulk_request: BulkTripPlanReque
 
     # 4. Parallel Schedule Fetching
     schedule_lookup = {}
+    schedule_source_lookup: Dict[tuple, str] = {}
     with ThreadPoolExecutor(max_workers=min(len(schedule_tasks) or 1, 15)) as executor:
         future_to_task = {
-            executor.submit(transit_proxy.get_stop_schedule, r, s, d, dt): (r, s, d, dt)
+            executor.submit(transit_proxy.get_stop_schedule_with_meta, r, s, d, dt): (r, s, d, dt)
             for (r, s, d, dt) in schedule_tasks
         }
         for future in as_completed(future_to_task):
             task = future_to_task[future]
             try:
-                schedule_lookup[task] = future.result()
+                rows, source = future.result()
+                schedule_lookup[task] = rows
+                schedule_source_lookup[task] = source
             except Exception as e:
                 print(f"[traffic] Bulk schedule fetch failed for {task}: {e}")
                 schedule_lookup[task] = []
+                schedule_source_lookup[task] = "unavailable"
 
     # 5. Plan Calculation (CPU bound, but fast enough sequentially here)
     final_plans = []
     for req in requests_to_process:
         best_plan = None
+        plan_source = "unavailable"
         candidates = req.get("candidates") or []
-        
+
         if not candidates:
             # Fallback to DB
             try:
@@ -1830,6 +1858,8 @@ def get_transit_trip_plan_bulk(request: Request, bulk_request: BulkTripPlanReque
                     req["departure_time"], req["route_number"],
                     req["timing_mode"], req["minimum_travel_minutes"]
                 )
+                if best_plan:
+                    plan_source = "db_fallback"
             except Exception: pass
         else:
             for direction_name in candidates:
@@ -1873,7 +1903,28 @@ def get_transit_trip_plan_bulk(request: Request, bulk_request: BulkTripPlanReque
                     if candidate:
                         if not best_plan or (req["timing_mode"] == "arrive_by" and candidate["dest_time"] > best_plan["dest_time"]) or (req["timing_mode"] != "arrive_by" and candidate["origin_time"] < best_plan["origin_time"]):
                             best_plan = candidate
-        
+
+            if best_plan:
+                # Aggregate the source across the schedule tasks used by this
+                # plan. Worst-case wins so the client surfaces the most stale
+                # signal: unavailable > db_fallback > upstream_cached > upstream_live.
+                task_sources = []
+                for d_name in candidates:
+                    for scode in [req["origin_stop_code"], req["dest_stop_code"]]:
+                        src = schedule_source_lookup.get(
+                            (req["route_number"], scode, d_name, req["service_date"])
+                        )
+                        if src:
+                            task_sources.append(src)
+                if "unavailable" in task_sources:
+                    plan_source = "unavailable"
+                elif "upstream_live" in task_sources:
+                    plan_source = "upstream_live"
+                elif "upstream_cached" in task_sources:
+                    plan_source = "upstream_cached"
+                else:
+                    plan_source = "upstream_live"
+
         # Serialize trip for response
         if best_plan:
             best_plan = dict(best_plan)
@@ -1881,7 +1932,9 @@ def get_transit_trip_plan_bulk(request: Request, bulk_request: BulkTripPlanReque
                 best_plan['origin_time'] = best_plan['origin_time'].isoformat()
             if isinstance(best_plan.get('dest_time'), datetime):
                 best_plan['dest_time'] = best_plan['dest_time'].isoformat()
-        
+            best_plan["source"] = plan_source
+            best_plan["service_date"] = req.get("service_date")
+
         final_plans.append(best_plan)
 
     return {"plans": final_plans}

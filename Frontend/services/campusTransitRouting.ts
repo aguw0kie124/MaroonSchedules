@@ -27,8 +27,16 @@ export interface CampusTransitPlan {
   scheduledBoardTimeUtc?: string;
   scheduledAlightTimeUtc?: string;
   arriveDestinationTimeUtc?: string;
+  scheduleSource?: TransitPlanSource;
+  serviceDate?: string;
   steps: DirectionStep[];
 }
+
+export type TransitPlanSource =
+  | 'upstream_live'
+  | 'upstream_cached'
+  | 'db_fallback'
+  | 'unavailable';
 
 export type TransitTripPreference = 'best' | 'fewer_transfers' | 'less_walking';
 
@@ -59,6 +67,8 @@ type PlanCandidate = {
   scheduledBoardTimeUtc?: string;
   scheduledAlightTimeUtc?: string;
   arriveDestinationTimeUtc?: string;
+  scheduleSource?: TransitPlanSource;
+  serviceDate?: string;
 };
 
 const WALKING_METERS_PER_MINUTE = 84;
@@ -325,6 +335,8 @@ function toTransitPlan(
     scheduledBoardTimeUtc: candidate.scheduledBoardTimeUtc,
     scheduledAlightTimeUtc: candidate.scheduledAlightTimeUtc,
     arriveDestinationTimeUtc: candidate.arriveDestinationTimeUtc,
+    scheduleSource: candidate.scheduleSource,
+    serviceDate: candidate.serviceDate,
     steps: buildSteps(candidate, startName, destinationName, nearestVehicleLabel),
   };
 }
@@ -485,6 +497,8 @@ function applyTripPlanToCandidate(
     scheduledBoardTimeUtc: scheduledBoardTime.toISOString(),
     scheduledAlightTimeUtc: scheduledAlightTime.toISOString(),
     arriveDestinationTimeUtc: arriveDestinationTime.toISOString(),
+    scheduleSource: (dbTrip.source as TransitPlanSource) || undefined,
+    serviceDate: typeof dbTrip.service_date === 'string' ? dbTrip.service_date : undefined,
   };
 }
 
