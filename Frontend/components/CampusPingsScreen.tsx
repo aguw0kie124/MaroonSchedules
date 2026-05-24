@@ -49,10 +49,10 @@ import {
   Megaphone,
   MessageCircle,
   Pizza,
+  MoreHorizontal,
   MoreVertical,
   Plus,
   Search,
-  Sparkles,
   Trash2,
   Users,
   X,
@@ -168,7 +168,7 @@ const PING_CATEGORIES: Array<{ id: PingCategory; accent: string; Icon: any }> = 
   { id: 'Food', accent: '#E48B3D', Icon: Pizza },
   { id: 'Academic', accent: '#6888E8', Icon: GraduationCap },
   { id: 'Heads Up', accent: '#CC5454', Icon: Megaphone },
-  { id: 'Other', accent: '#7A889B', Icon: Sparkles },
+  { id: 'Other', accent: '#7A889B', Icon: MoreHorizontal },
 ];
 
 const TIME_PRESETS: Array<{ id: TimePreset; label: string }> = [
@@ -184,7 +184,7 @@ export function categoryMeta(category?: string | null) {
     PING_CATEGORIES.find((entry) => entry.id === normalizedCategory) || {
       id: normalizedCategory || 'Other',
       accent: '#7A889B',
-      Icon: Sparkles,
+      Icon: MoreHorizontal,
     }
   );
 }
@@ -1296,46 +1296,46 @@ export function CampusPingsScreen() {
 
   const handleAddPingAuthorAsFriend = useCallback((ping: PingCard) => {
     if (!user?.id || !ping.userId) {
-      Alert.alert('Sign in required', 'Please sign in to manage connections.');
+      Alert.alert('Sign in required', 'Please sign in to manage friends.');
       return;
     }
     if (ping.userId === user.id) {
-      Alert.alert('Your post', 'You cannot connect with yourself.');
+      Alert.alert('Your post', 'You cannot add yourself as a friend.');
       return;
     }
     if (ping.isAnonymous) {
-      Alert.alert('Anonymous ping', 'Anonymous posts cannot expose connection actions.');
+      Alert.alert('Anonymous ping', 'Anonymous posts cannot expose friend actions.');
       return;
     }
 
     const displayName = ping.userName;
     Alert.alert(
-      'Send connection request?',
-      `Connect with ${displayName}?`,
+      'Send friend request?',
+      `Add ${displayName} as a friend?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Connect',
+          text: 'Add Friend',
           onPress: async () => {
             try {
               const result = await addFriend(ping.userId!, user.id);
               const action = result?.friendship?.action;
               if (action === 'accepted') {
-                Alert.alert('Connection accepted', `${displayName} is now connected with you.`);
+                Alert.alert('Friend added', `${displayName} is now your friend.`);
                 return;
               }
               if (action === 'already_connected') {
-                Alert.alert('Already connected', `You are already connected with ${displayName}.`);
+                Alert.alert('Already friends', `You are already friends with ${displayName}.`);
                 return;
               }
               if (action === 'request_pending') {
-                Alert.alert('Request already sent', `Your connection request to ${displayName} is still pending.`);
+                Alert.alert('Request already sent', `Your friend request to ${displayName} is still pending.`);
                 return;
               }
-              Alert.alert('Request sent', `${displayName} can accept your connection request from their profile.`);
+              Alert.alert('Request sent', `${displayName} can accept your friend request from their profile.`);
             } catch (error) {
-              console.warn('[Pings] add connection failed', error);
-              Alert.alert('Unable to connect', 'We could not send that connection request right now.');
+              console.warn('[Pings] add friend failed', error);
+              Alert.alert('Unable to add friend', 'We could not send that friend request right now.');
             }
           },
         },
@@ -1347,7 +1347,7 @@ export function CampusPingsScreen() {
     const displayName = ping.userName;
     const actions: Array<{ text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }> = [];
     if (ping.userId && ping.userId !== user?.id && !ping.isAnonymous) {
-      actions.push({ text: 'Connect', onPress: () => handleAddPingAuthorAsFriend(ping) });
+      actions.push({ text: 'Add Friend', onPress: () => handleAddPingAuthorAsFriend(ping) });
     }
     actions.push({ text: 'Report', onPress: () => handleReportPing(ping) });
     actions.push({ text: 'Block User', style: 'destructive', onPress: () => handleBlockPingAuthor(ping) });

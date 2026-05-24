@@ -193,7 +193,7 @@ export function FindFriendsModal({ visible, onClose }: FindFriendsModalProps) {
     const friendlyName = user.fullName || user.primaryEmailAddress?.emailAddress || 'me';
     try {
       await Share.share({
-        message: `Connect with ${friendlyName} on MaroonSchedules! Tap to add as a friend: ${link}`,
+        message: `Add ${friendlyName} as a friend on MaroonSchedules: ${link}`,
         url: link,
       });
     } catch (e) {
@@ -295,7 +295,7 @@ export function FindFriendsModal({ visible, onClose }: FindFriendsModalProps) {
         {/* Share link banner */}
         <Pressable style={[styles.shareBanner, { backgroundColor: `${COLORS.primary}12`, borderColor: `${COLORS.primary}30` }]} onPress={handleShareLink}>
           <Link2 size={14} color={COLORS.primary} />
-          <Text style={[styles.shareBannerText, { color: COLORS.primary }]}>Share your invite link to connect instantly</Text>
+          <Text style={[styles.shareBannerText, { color: COLORS.primary }]}>Share your invite link to add friends instantly</Text>
         </Pressable>
 
         {/* Results */}

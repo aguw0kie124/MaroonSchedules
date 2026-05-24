@@ -27,7 +27,7 @@ import {
   Image as ImageIcon,
   Pizza,
   GraduationCap,
-  Sparkles,
+  MoreHorizontal,
   Megaphone,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -60,7 +60,7 @@ export const PING_CATEGORIES: Array<{ id: PingCategory; accent: string; Icon: an
   { id: 'Food', accent: '#E48B3D', Icon: Pizza },
   { id: 'Academic', accent: '#6888E8', Icon: GraduationCap },
   { id: 'Heads Up', accent: '#CC5454', Icon: Megaphone },
-  { id: 'Other', accent: '#7A889B', Icon: Sparkles },
+  { id: 'Other', accent: '#7A889B', Icon: MoreHorizontal },
 ];
 
 export const TIME_PRESETS: Array<{ id: TimePreset; label: string }> = [

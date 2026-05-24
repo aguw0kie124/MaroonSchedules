@@ -394,7 +394,7 @@ export default function ProfileSettingsScreen({ navigation }: any) {
             {renderSettingRow({
               icon: <UserRound size={18} color={COLORS.primary} />,
               iconBg: `${COLORS.primary}15`,
-              title: 'Connections',
+              title: 'Friends',
               subtitle: 'Review requests and manage your friends.',
               onPress: openConnectionsManager,
             })}

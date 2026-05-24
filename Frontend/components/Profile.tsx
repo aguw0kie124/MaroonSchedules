@@ -772,7 +772,7 @@ export function Profile() {
     if (relationshipStatus === 'accepted') return 'Remove';
     if (relationshipStatus === 'incoming_pending') return 'Accept';
     if (relationshipStatus === 'outgoing_pending') return 'Pending';
-    return 'Connect';
+    return 'Add Friend';
   }, [getConnectionStatus]);
 
   const handleUnblock = async (targetId: string) => {
@@ -793,7 +793,7 @@ export function Profile() {
 
   const handleConnectionAction = async (targetId: string, name?: string, relationshipStatus = 'none') => {
     if (!user?.id) {
-      Alert.alert('Error', 'You must be signed in to manage connections.');
+      Alert.alert('Error', 'You must be signed in to manage friends.');
       return;
     }
     try {
@@ -836,8 +836,8 @@ export function Profile() {
           : `${name || 'User'} will be notified of your friend request.`,
       );
     } catch (err) {
-      console.warn('Failed to update connection', err);
-      Alert.alert('Error', 'Failed to update connection.');
+      console.warn('Failed to update friend status', err);
+      Alert.alert('Error', 'Failed to update friend status.');
     }
   };
 
@@ -1562,7 +1562,7 @@ export function Profile() {
             {/* Header */}
             <View style={styles.modalCardHeader}>
               <View style={{ width: 40 }} />
-              <Text style={[styles.modalCardTitle, { color: COLORS.textPrimary }]}>Connections</Text>
+              <Text style={[styles.modalCardTitle, { color: COLORS.textPrimary }]}>Friends</Text>
               <Pressable onPress={() => setShowFriendsModal(false)} style={styles.modalCardClose}>
                 <X size={22} color={COLORS.textPrimary} />
               </Pressable>
@@ -1637,7 +1637,7 @@ export function Profile() {
                   ) : (
                     <View style={styles.modalEmptyState}>
                       <UserRound size={48} color={COLORS.textTertiary} strokeWidth={1} />
-                      <Text style={{ color: COLORS.textTertiary, marginTop: 12 }}>No connections yet</Text>
+                      <Text style={{ color: COLORS.textTertiary, marginTop: 12 }}>No friends yet</Text>
                     </View>
                   )}
                 </View>

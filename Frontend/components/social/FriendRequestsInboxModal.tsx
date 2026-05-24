@@ -146,7 +146,7 @@ export function FriendRequestsInboxModal({
         <View style={styles.emptyState}>
           <UserCheck size={44} color={COLORS.textTertiary} strokeWidth={1.5} />
           <Text style={styles.emptyText}>No pending requests</Text>
-          <Text style={styles.emptySubtext}>When someone sends you a connection request, it'll appear here.</Text>
+          <Text style={styles.emptySubtext}>When someone sends you a friend request, it'll appear here.</Text>
         </View>
       );
     }
@@ -202,7 +202,7 @@ export function FriendRequestsInboxModal({
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Mail size={20} color={COLORS.primary} />
-            <Text style={styles.headerTitle}>Connection Requests</Text>
+            <Text style={styles.headerTitle}>Friend Requests</Text>
             {visibleIncoming.length > 0 && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{visibleIncoming.length}</Text>
