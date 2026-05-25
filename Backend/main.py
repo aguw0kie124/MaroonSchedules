@@ -30,7 +30,7 @@ from routers.traffic import router as traffic_router
 from routers.updates import router as updates_router
 from routers.upload import UPLOAD_DIR
 from routers.upload import router as upload_router
-from services import cache_service, course_service, schedule_service, snapshot_jobs, user_service
+from services import cache_service, course_service, schedule_service, snapshot_jobs, user_service, campus_hub_service
 
 # Same source of truth as Expo: repo-root .env, then optional Backend/.env for local-only keys.
 _BACKEND_DIR = Path(__file__).resolve().parent
@@ -217,7 +217,10 @@ class UpdateProfileRequest(BaseModel):
     graduation_year: Optional[str] = None
     preferred_time: Optional[str] = None
     preferred_event_categories: Optional[list[str]] = None
+    preferred_event_interests: Optional[list[str]] = None
     preferred_social_mode: Optional[str] = None
+    notification_frequency: Optional[str] = None
+    onboarding_answers: Optional[dict] = None
     event_preferences_completed: Optional[bool] = None
     max_credits: Optional[str] = None
     avoid_friday: Optional[bool] = None
@@ -233,6 +236,26 @@ def update_profile(clerk_id: str, req: UpdateProfileRequest = Body(...), auth_us
     if not result:
         raise HTTPException(status_code=404, detail="User not found")
     return result
+
+
+@optional_protected_router.get("/events/recommended")
+def get_events_recommended(
+    clerk_id: Optional[str] = Query(None),
+    limit: int = Query(80, ge=1, le=500),
+    campus: str = Query("tamu"),
+    refresh: bool = Query(False),
+    auth_user_id: Optional[str] = Depends(require_optional_auth),
+):
+    if clerk_id is not None and auth_user_id is None:
+        clerk_id = None
+    if clerk_id is not None:
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only request your own recommendations")
+    return campus_hub_service.get_recommended_events(
+        clerk_id=clerk_id,
+        limit=limit,
+        campus=campus,
+        force_refresh=refresh,
+    )
 
 
 # ============================================================

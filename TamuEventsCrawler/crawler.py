@@ -128,6 +128,17 @@ def save_raw(source_name: str, data: str | None) -> None:
         f.write(data)
 
 
+def load_cached_raw(source_name: str) -> str | None:
+    """Load previously saved raw payload for a source."""
+    raw_path = RAW_DIR / f"{source_name}.json"
+    if not raw_path.exists():
+        return None
+    try:
+        return raw_path.read_text(encoding="utf-8")
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Crawl orchestration
 # ---------------------------------------------------------------------------
@@ -211,8 +222,24 @@ async def crawl_source(
                 raw_events = await parser(
                     body, src_name, url, http_client=http_client
                 )
+            elif status == 304:
+                cached_body = load_cached_raw(src_name)
+                if cached_body:
+                    logger.info("Source %s not modified, using cached raw payload", src_name)
+                    raw_events = await parser(
+                        cached_body, src_name, url, http_client=http_client
+                    )
         except Exception as exc:
             logger.warning("Error crawling RSS directory %s: %s", src_name, exc)
+            cached_body = load_cached_raw(src_name)
+            if cached_body:
+                try:
+                    logger.info("Using cached raw payload for %s after fetch error", src_name)
+                    raw_events = await parser(
+                        cached_body, src_name, url, http_client=http_client
+                    )
+                except Exception as cache_exc:
+                    logger.warning("Cached parse failed for %s: %s", src_name, cache_exc)
 
     elif src_type == "html_multi_url":
         # Multi-URL source: fetch seed page + explicit URLs with link following
@@ -222,6 +249,11 @@ async def crawl_source(
                 body, status, _ = await http_client.fetch(url)
                 if body and status != 304:
                     save_raw(src_name, body)
+                elif status == 304:
+                    cached_body = load_cached_raw(src_name)
+                    if cached_body:
+                        logger.info("Source %s not modified, using cached raw payload", src_name)
+                        body = cached_body
 
             raw_events = await parser(
                 body, src_name, url or "",
@@ -230,8 +262,22 @@ async def crawl_source(
             )
         except Exception as exc:
             logger.warning("Error crawling multi-URL source %s: %s", src_name, exc)
-            state.update_source_state(src_name, errors=1)
-            return []
+            cached_body = load_cached_raw(src_name)
+            if cached_body:
+                try:
+                    logger.info("Using cached raw payload for %s after fetch error", src_name)
+                    raw_events = await parser(
+                        cached_body, src_name, url or "",
+                        http_client=http_client,
+                        urls=source.urls or [],
+                    )
+                except Exception as cache_exc:
+                    logger.warning("Cached parse failed for %s: %s", src_name, cache_exc)
+                    state.update_source_state(src_name, errors=1)
+                    return []
+            else:
+                state.update_source_state(src_name, errors=1)
+                return []
 
     elif src_type == "html_events":
         # Single HTML events page
@@ -241,12 +287,27 @@ async def crawl_source(
                 save_raw(src_name, body)
                 raw_events = await parser(body, src_name, url)
             elif status == 304:
-                logger.info("Source %s not modified, skipping", src_name)
-                return []
+                cached_body = load_cached_raw(src_name)
+                if cached_body:
+                    logger.info("Source %s not modified, using cached raw payload", src_name)
+                    raw_events = await parser(cached_body, src_name, url)
+                else:
+                    logger.info("Source %s not modified and no cached payload available", src_name)
+                    return []
         except Exception as exc:
             logger.error("Error crawling HTML events %s: %s", src_name, exc)
-            state.update_source_state(src_name, errors=1)
-            return []
+            cached_body = load_cached_raw(src_name)
+            if cached_body:
+                try:
+                    logger.info("Using cached raw payload for %s after fetch error", src_name)
+                    raw_events = await parser(cached_body, src_name, url)
+                except Exception as cache_exc:
+                    logger.error("Cached parse failed for HTML events %s: %s", src_name, cache_exc)
+                    state.update_source_state(src_name, errors=1)
+                    return []
+            else:
+                state.update_source_state(src_name, errors=1)
+                return []
 
     elif src_type == "html_dynamic_table":
         # HTML table source that may follow detail links for enrichment
@@ -263,12 +324,39 @@ async def crawl_source(
                     source_config=source,
                 )
             elif status == 304:
-                logger.info("Source %s not modified, skipping", src_name)
-                return []
+                cached_body = load_cached_raw(src_name)
+                if cached_body:
+                    logger.info("Source %s not modified, using cached raw payload", src_name)
+                    raw_events = await parser(
+                        cached_body,
+                        src_name,
+                        primary_url,
+                        http_client=http_client,
+                        source_config=source,
+                    )
+                else:
+                    logger.info("Source %s not modified and no cached payload available", src_name)
+                    return []
         except Exception as exc:
             logger.error("Error crawling HTML dynamic table %s: %s", src_name, exc)
-            state.update_source_state(src_name, errors=1)
-            return []
+            cached_body = load_cached_raw(src_name)
+            if cached_body:
+                try:
+                    logger.info("Using cached raw payload for %s after fetch error", src_name)
+                    raw_events = await parser(
+                        cached_body,
+                        src_name,
+                        primary_url,
+                        http_client=http_client,
+                        source_config=source,
+                    )
+                except Exception as cache_exc:
+                    logger.error("Cached parse failed for HTML dynamic table %s: %s", src_name, cache_exc)
+                    state.update_source_state(src_name, errors=1)
+                    return []
+            else:
+                state.update_source_state(src_name, errors=1)
+                return []
 
     else:
         # Standard single-URL source (livewhale_json, html)
@@ -278,12 +366,27 @@ async def crawl_source(
                 save_raw(src_name, body)
                 raw_events = await parser(body, src_name, url)
             elif status == 304:
-                logger.info("Source %s not modified, skipping", src_name)
-                return []
+                cached_body = load_cached_raw(src_name)
+                if cached_body:
+                    logger.info("Source %s not modified, using cached raw payload", src_name)
+                    raw_events = await parser(cached_body, src_name, url)
+                else:
+                    logger.info("Source %s not modified and no cached payload available", src_name)
+                    return []
         except Exception as exc:
             logger.error("Error crawling %s: %s", src_name, exc)
-            state.update_source_state(src_name, errors=1)
-            return []
+            cached_body = load_cached_raw(src_name)
+            if cached_body:
+                try:
+                    logger.info("Using cached raw payload for %s after fetch error", src_name)
+                    raw_events = await parser(cached_body, src_name, url)
+                except Exception as cache_exc:
+                    logger.error("Cached parse failed for %s: %s", src_name, cache_exc)
+                    state.update_source_state(src_name, errors=1)
+                    return []
+            else:
+                state.update_source_state(src_name, errors=1)
+                return []
 
     # Opportunistic RSS / iCal discovery for HTML pages
     if src_type in ("html_events", "html_multi_url", "html_pagination", "html_search") and "body" in locals() and body:

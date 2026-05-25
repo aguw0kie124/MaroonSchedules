@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from services import cache_service, place_registry_service
+from services.event_classification_service import classify_event_with_metadata
 
 
 CAMPUS_EVENT_SOURCES = {
@@ -160,6 +161,50 @@ LOW_SIGNAL_TERMS = (
     "syllabus",
 )
 
+PRIMARY_CATEGORY_KEYS = (
+    "sports",
+    "academic",
+    "food",
+    "social",
+    "health_wellness",
+    "entertainment",
+    "advocacy",
+    "miscellaneous",
+)
+
+
+def _normalize_primary_category(value: Any) -> str:
+    token = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if token in PRIMARY_CATEGORY_KEYS:
+        return token
+    if token in {"health_and_wellness", "healthwellness", "wellness"}:
+        return "health_wellness"
+    return "miscellaneous"
+
+
+def _coerce_string_list(value: Any) -> List[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
+def _build_category_flags(primary_category: str, raw: Dict[str, Any]) -> Dict[str, int]:
+    return {
+        "social": int(primary_category == "social"),
+        "sports": int(primary_category == "sports"),
+        "academic": int(primary_category == "academic"),
+        "food": int(primary_category == "food"),
+        "advocacy": int(primary_category == "advocacy"),
+        "entertainment": int(primary_category == "entertainment"),
+        "health_wellness": int(primary_category == "health_wellness"),
+        "miscellaneous": int(primary_category == "miscellaneous"),
+        # Keep legacy booleans available for compatibility and debugging.
+        "casual": int(raw.get("casual", 0)),
+        "professional": int(raw.get("professional", 0)),
+    }
+
 
 def _campus_key(campus: str | None) -> str:
     key = (campus or "tamu").strip().lower()
@@ -295,6 +340,84 @@ def _normalize_event_row(raw: Dict[str, Any], campus: str) -> Dict[str, Any] | N
     )
     location = resolved_place["name"] if resolved_place else raw_location
 
+    legacy_categories = {
+        "social": int(raw.get("social", 0)),
+        "sports": int(raw.get("sports", 0)),
+        "academic": int(raw.get("academic", 0)),
+        "food": int(raw.get("food", 0)),
+        "advocacy": int(raw.get("advocacy", 0)),
+        "entertainment": int(raw.get("entertainment", 0)),
+        "health_wellness": int(raw.get("health_wellness", 0)),
+        "miscellaneous": int(raw.get("miscellaneous", 0) or raw.get("religion", 0)),
+        "casual": int(raw.get("casual", 0)),
+        "professional": int(raw.get("professional", 0)),
+    }
+
+    primary_category = _normalize_primary_category(raw.get("primary_category"))
+    secondary_categories = [
+        category
+        for category in (_normalize_primary_category(item) for item in raw.get("secondary_categories") or [])
+        if category != primary_category
+    ]
+    secondary_categories = list(dict.fromkeys(secondary_categories))
+
+    classification_model = str(raw.get("classification_model") or "").strip()
+    classifier_version = str(raw.get("classifier_version") or "").strip()
+    classified_at = raw.get("classified_at")
+    classification_reasoning_summary = str(raw.get("classification_reasoning_summary") or "").strip()
+    classification_confidence = float(raw.get("classification_confidence") or 0.0)
+    interest_tags = _coerce_string_list(raw.get("interest_tags"))
+    audience_tags = _coerce_string_list(raw.get("audience_tags"))
+    content_flags = _coerce_string_list(raw.get("content_flags"))
+
+    has_valid_stored_classification = bool(classification_model or classifier_version or raw.get("primary_category"))
+    if not has_valid_stored_classification:
+        classification_input = {
+            "title": raw.get("title"),
+            "description": raw.get("description"),
+            "location": raw_location,
+            "host_name": raw.get("host_name"),
+            "host_type": raw.get("host_type"),
+            "department_name": raw.get("department_name"),
+            "tags": raw.get("tags") or [],
+            "audience": raw.get("audience") or [],
+            "campus": raw.get("campus"),
+            "affiliation": raw.get("affiliation"),
+            "registration_status": raw.get("registration_status"),
+            "duration_minutes": raw.get("duration_minutes"),
+            "social": legacy_categories["social"],
+            "sports": legacy_categories["sports"],
+            "academic": legacy_categories["academic"],
+            "food": legacy_categories["food"],
+            "advocacy": legacy_categories["advocacy"],
+            "entertainment": legacy_categories["entertainment"],
+            "health_wellness": legacy_categories["health_wellness"],
+            "professional": legacy_categories["professional"],
+            "has_food": bool(raw.get("has_food")),
+            "food_confidence": float(raw.get("food_confidence") or 0.0),
+            "start_time": raw.get("start_time"),
+            "seats_available": raw.get("seats_available"),
+            "seats_total": raw.get("seats_total"),
+        }
+        classification, metadata = classify_event_with_metadata(classification_input, allow_llm=False)
+        primary_category = _normalize_primary_category(classification.get("primary_category"))
+        secondary_categories = [
+            category
+            for category in (_normalize_primary_category(item) for item in classification.get("secondary_categories") or [])
+            if category != primary_category
+        ]
+        secondary_categories = list(dict.fromkeys(secondary_categories))
+        interest_tags = _coerce_string_list(classification.get("interest_tags"))
+        audience_tags = _coerce_string_list(classification.get("audience_tags"))
+        content_flags = _coerce_string_list(classification.get("content_flags"))
+        classification_confidence = float(classification.get("confidence") or 0.0)
+        classification_reasoning_summary = str(classification.get("reasoning_summary") or "").strip()
+        classifier_version = str(metadata.get("classifier_version") or "")
+        classification_model = str(metadata.get("classification_model") or "")
+        classified_at = metadata.get("classified_at")
+
+    category_flags = _build_category_flags(primary_category, raw)
+
     normalized = {
         "event_id": raw.get("id"),
         "title": raw.get("title") or "Campus Event",
@@ -318,34 +441,18 @@ def _normalize_event_row(raw: Dict[str, Any], campus: str) -> Dict[str, Any] | N
         "food_reasons": raw.get("food_reasons") or [],
         "campus": raw.get("campus") or config["label"],
         "affiliation": raw.get("affiliation") or config["affiliation"],
-        "categories": {
-            "social": int(raw.get("social", 0)),
-            "sports": int(raw.get("sports", 0)),
-            "academic": int(raw.get("academic", 0)),
-            "food": int(raw.get("food", 0)),
-            "advocacy": int(raw.get("advocacy", 1) if raw.get("advocacy") else 0),
-            "entertainment": int(raw.get("entertainment", 0)),
-            "health_wellness": int(raw.get("health_wellness", 0)),
-            "miscellaneous": int(
-                raw.get("miscellaneous", 0)
-                or raw.get("religion", 0)
-                or (
-                    not any(
-                        [
-                            int(raw.get("social", 0)),
-                            int(raw.get("sports", 0)),
-                            int(raw.get("academic", 0)),
-                            int(raw.get("food", 0)),
-                            int(raw.get("advocacy", 0)),
-                            int(raw.get("entertainment", 0)),
-                            int(raw.get("health_wellness", 0)),
-                        ]
-                    )
-                )
-            ),
-            "casual": int(raw.get("casual", 0)),
-            "professional": int(raw.get("professional", 0)),
-        },
+        "primary_category": primary_category,
+        "secondary_categories": secondary_categories,
+        "interest_tags": interest_tags,
+        "audience_tags": audience_tags,
+        "content_flags": content_flags,
+        "classification_confidence": classification_confidence,
+        "classification_reasoning_summary": classification_reasoning_summary,
+        "classifier_version": classifier_version,
+        "classification_model": classification_model,
+        "classified_at": classified_at,
+        "categories": category_flags,
+        "legacy_categories": legacy_categories,
         "map_available": (resolved_place is not None) or (lat is not None and lng is not None),
     }
 

@@ -14,6 +14,29 @@ logger = logging.getLogger("tamu_crawler.output_csv")
 OUTPUT_DIR = Path("output")
 EVENTS_FILE = Path("data/normalized/events.jsonl")
 
+PRIMARY_CATEGORY_ORDER = [
+    "sports",
+    "academic",
+    "food",
+    "social",
+    "health_wellness",
+    "entertainment",
+    "advocacy",
+    "miscellaneous",
+]
+
+
+def _normalized_primary_category(event: Dict[str, Any]) -> str:
+    category = str(event.get("primary_category") or "").strip().lower()
+    if category in PRIMARY_CATEGORY_ORDER:
+        return category
+
+    # Back-compat with legacy boolean flags when primary_category is absent.
+    for key in PRIMARY_CATEGORY_ORDER:
+        if event.get(key, 0) == 1:
+            return key
+    return "miscellaneous"
+
 
 def _load_events() -> List[Dict[str, Any]]:
     """Load events from JSONL."""
@@ -60,13 +83,9 @@ def generate_summary_by_department(events: List[Dict[str, Any]]) -> Path:
 
 
 def generate_summary_by_category(events: List[Dict[str, Any]]) -> Path:
-    """Generate CSV: event counts by category flag."""
-    categories = ["social", "sports", "academic", "food",
-                   "advocacy", "entertainment", "health_wellness", "religion"]
-    rows = []
-    for cat in categories:
-        count = sum(1 for e in events if e.get(cat, 0) == 1)
-        rows.append([cat, count])
+    """Generate CSV: event counts by normalized primary category."""
+    counter = Counter(_normalized_primary_category(event) for event in events)
+    rows = [[category, counter.get(category, 0)] for category in PRIMARY_CATEGORY_ORDER]
     return _write_csv("summary_by_category.csv", ["category", "event_count"], rows)
 
 
@@ -124,10 +143,7 @@ def generate_source_health(events: List[Dict[str, Any]]) -> Path:
         source_stats[sn]["count"] += 1
         if e.get("has_food"):
             source_stats[sn]["food_count"] += 1
-        for cat in ["social", "sports", "academic", "food",
-                     "advocacy", "entertainment", "health_wellness", "religion"]:
-            if e.get(cat, 0) == 1:
-                source_stats[sn]["categories"][cat] += 1
+        source_stats[sn]["categories"][_normalized_primary_category(e)] += 1
 
     rows = []
     for sn, stats in sorted(source_stats.items(), key=lambda x: -x[1]["count"]):
