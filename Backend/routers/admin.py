@@ -6,7 +6,7 @@ import psycopg
 
 from db_config import CONNECTION_PARAMS, get_pool
 from auth.clerk_middleware import require_auth, ensure_matching_user
-from services import cache_service, encryption_service
+from services import cache_service
 from repositories import tag_repository
 from routers.upload import UPLOAD_DIR
 
@@ -18,12 +18,6 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
 import threading
-
-def _safe_decrypt(value: Optional[str]) -> Optional[str]:
-    """Decrypt if it's an encrypted payload, otherwise return as is."""
-    if not value or not isinstance(value, str):
-        return value
-    return encryption_service.decrypt_string(value)
 
 _admin_schema_lock = threading.Lock()
 _admin_schema_initialized = False
@@ -478,9 +472,9 @@ def submit_admin_application(
                     """,
                     (
                         req.clerk_id,
-                        encryption_service.encrypt_string(application_email),
-                        encryption_service.encrypt_string(normalized["organization_name"]),
-                        encryption_service.encrypt_string(normalized["reason"]),
+                        application_email,
+                        normalized["organization_name"],
+                        normalized["reason"],
                     ),
                 )
                 app_id = cur.fetchone()[0]
@@ -526,8 +520,8 @@ def create_admin_event(
                     """,
                     (
                         req.clerk_id,
-                        encryption_service.encrypt_string(req.title),
-                        encryption_service.encrypt_string(req.description),
+                        req.title,
+                        req.description,
                         req.lat,
                         req.lng,
                         req.location_name,
@@ -584,8 +578,8 @@ def update_admin_event(
                     RETURNING id
                     """,
                     (
-                        encryption_service.encrypt_string(req.title),
-                        encryption_service.encrypt_string(req.description),
+                        req.title,
+                        req.description,
                         req.lat,
                         req.lng,
                         req.location_name,
@@ -671,8 +665,6 @@ def get_my_admin_events(
                 events = cur.fetchall()
                 for event in events:
                     event["id"] = str(event["id"])
-                    event["title"] = _safe_decrypt(event.get("title"))
-                    event["description"] = _safe_decrypt(event.get("description"))
                     event["start_time"] = event["start_time"].isoformat() if event["start_time"] else None
                     event["end_time"] = event["end_time"].isoformat() if event["end_time"] else None
                     event["created_at"] = event["created_at"].isoformat() if event["created_at"] else None
