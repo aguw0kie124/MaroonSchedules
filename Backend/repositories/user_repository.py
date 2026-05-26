@@ -83,7 +83,10 @@ def _user_select_clause() -> str:
         "graduation_year",
         "preferred_time",
         "preferred_event_categories",
+        "preferred_event_interests",
         "preferred_social_mode",
+        "notification_frequency",
+        "onboarding_answers",
         "event_preferences_completed",
         "max_credits",
         "avoid_friday",
@@ -118,7 +121,10 @@ def _ensure_user_schema(conn: psycopg.Connection) -> None:
             graduation_year TEXT,
             preferred_time TEXT,
             preferred_event_categories JSONB DEFAULT '[]'::jsonb,
+            preferred_event_interests JSONB DEFAULT '[]'::jsonb,
             preferred_social_mode TEXT,
+            notification_frequency TEXT DEFAULT 'medium',
+            onboarding_answers JSONB DEFAULT '{}'::jsonb,
             event_preferences_completed BOOLEAN DEFAULT FALSE,
             max_credits TEXT,
             avoid_friday BOOLEAN DEFAULT FALSE,
@@ -143,7 +149,10 @@ def _ensure_user_schema(conn: psycopg.Connection) -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS graduation_year TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_time TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_event_categories JSONB DEFAULT '[]'::jsonb",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_event_interests JSONB DEFAULT '[]'::jsonb",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_social_mode TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_frequency TEXT DEFAULT 'medium'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_answers JSONB DEFAULT '{}'::jsonb",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS event_preferences_completed BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS max_credits TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS avoid_friday BOOLEAN DEFAULT FALSE",
@@ -199,6 +208,22 @@ def _ensure_user_schema(conn: psycopg.Connection) -> None:
         """,
         "ALTER TABLE admin_events ADD COLUMN IF NOT EXISTS google_review_url TEXT",
         """
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            user_id TEXT PRIMARY KEY,
+            top_categories JSONB DEFAULT '[]'::jsonb,
+            top_interest_tags JSONB DEFAULT '[]'::jsonb,
+            avoid_tags JSONB DEFAULT '[]'::jsonb,
+            preferred_time_windows JSONB DEFAULT '[]'::jsonb,
+            notification_priority_tags JSONB DEFAULT '[]'::jsonb,
+            notification_frequency TEXT DEFAULT 'medium',
+            profile_summary TEXT,
+            profile_model TEXT,
+            profile_version TEXT,
+            profile_generated_at TIMESTAMPTZ,
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS admin_event_reviews (
             id BIGSERIAL PRIMARY KEY,
             event_id UUID REFERENCES admin_events(id) ON DELETE CASCADE,
@@ -216,41 +241,43 @@ def _ensure_user_schema(conn: psycopg.Connection) -> None:
 def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile_image_url: str = None, username: str = None) -> dict:
     """Insert a new user row or update email/full_name/username if the clerk_id already exists."""
     tour_completed_default = True if email and email.endswith("@gmail.com") else False
-    columns = _user_columns()
-    insert_columns = ["clerk_id"]
-    insert_values = [clerk_id]
-    if "email" in columns:
-        insert_columns.append("email")
-        insert_values.append(encryption_service.encrypt_string(email) if email else None)
-    if "full_name" in columns:
-        insert_columns.append("full_name")
-        insert_values.append(encryption_service.encrypt_string(full_name) if full_name else None)
-    if "username" in columns:
-        insert_columns.append("username")
-        insert_values.append(username or None)
-    if "profile_image_url" in columns:
-        insert_columns.append("profile_image_url")
-        insert_values.append(profile_image_url)
-    if "tour_completed" in columns:
-        insert_columns.append("tour_completed")
-        insert_values.append(tour_completed_default)
-
-    update_fields = []
-    if "email" in columns:
-        update_fields.append("email = COALESCE(EXCLUDED.email, users.email)")
-    if "full_name" in columns:
-        update_fields.append("full_name = COALESCE(EXCLUDED.full_name, users.full_name)")
-    if "username" in columns:
-        update_fields.append("username = COALESCE(EXCLUDED.username, users.username)")
-    if "profile_image_url" in columns:
-        update_fields.append("profile_image_url = COALESCE(EXCLUDED.profile_image_url, users.profile_image_url)")
-    if "updated_at" in columns:
-        update_fields.append("updated_at = NOW()")
-
-    select_clause = _user_select_clause()
-    placeholders = ", ".join(["%s"] * len(insert_columns))
     with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
+        _get_table_columns.cache_clear()
+        columns = _user_columns()
+
+        insert_columns = ["clerk_id"]
+        insert_values = [clerk_id]
+        if "email" in columns:
+            insert_columns.append("email")
+            insert_values.append(encryption_service.encrypt_string(email) if email else None)
+        if "full_name" in columns:
+            insert_columns.append("full_name")
+            insert_values.append(encryption_service.encrypt_string(full_name) if full_name else None)
+        if "username" in columns:
+            insert_columns.append("username")
+            insert_values.append(username or None)
+        if "profile_image_url" in columns:
+            insert_columns.append("profile_image_url")
+            insert_values.append(profile_image_url)
+        if "tour_completed" in columns:
+            insert_columns.append("tour_completed")
+            insert_values.append(tour_completed_default)
+
+        update_fields = []
+        if "email" in columns:
+            update_fields.append("email = COALESCE(EXCLUDED.email, users.email)")
+        if "full_name" in columns:
+            update_fields.append("full_name = COALESCE(EXCLUDED.full_name, users.full_name)")
+        if "username" in columns:
+            update_fields.append("username = COALESCE(EXCLUDED.username, users.username)")
+        if "profile_image_url" in columns:
+            update_fields.append("profile_image_url = COALESCE(EXCLUDED.profile_image_url, users.profile_image_url)")
+        if "updated_at" in columns:
+            update_fields.append("updated_at = NOW()")
+
+        select_clause = _user_select_clause()
+        placeholders = ", ".join(["%s"] * len(insert_columns))
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 f"""
@@ -273,9 +300,10 @@ def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile
 
 def get_user(clerk_id: str) -> Optional[dict]:
     """Return full user record by Clerk ID, or None."""
-    select_clause = _user_select_clause()
     with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
+        _get_table_columns.cache_clear()
+        select_clause = _user_select_clause()
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 f"""
@@ -298,31 +326,34 @@ def update_profile(clerk_id: str, fields: dict) -> Optional[dict]:
     """Update only the profile-preference columns for a user."""
     allowed = {
         "major", "graduation_year", "preferred_time",
-        "preferred_event_categories", "preferred_social_mode", "event_preferences_completed",
+        "preferred_event_categories", "preferred_event_interests",
+        "preferred_social_mode", "notification_frequency",
+        "onboarding_answers", "event_preferences_completed",
         "max_credits", "avoid_friday", "show_online_first",
         "profile_image_url", "full_name",
         "bio", "website",
     }
-    existing = _user_columns()
-    updates = {}
-    for k, v in fields.items():
-        if k in allowed and k in existing:
-            if k in ["email", "full_name"] and v:
-                updates[k] = encryption_service.encrypt_string(v)
-            else:
-                updates[k] = v
-                
-    if not updates:
-        return get_user(clerk_id)
-
-    set_clause = ", ".join(f"{col} = %s" for col in updates)
-    values = list(updates.values()) + [clerk_id]
-    if "updated_at" in existing:
-        set_clause = f"{set_clause}, updated_at = NOW()"
-    select_clause = _user_select_clause()
-
     with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
+        _get_table_columns.cache_clear()
+        existing = _user_columns()
+        updates = {}
+        for k, v in fields.items():
+            if k in allowed and k in existing:
+                if k in ["email", "full_name"] and v:
+                    updates[k] = encryption_service.encrypt_string(v)
+                else:
+                    updates[k] = v
+
+        if not updates:
+            return get_user(clerk_id)
+
+        set_clause = ", ".join(f"{col} = %s" for col in updates)
+        values = list(updates.values()) + [clerk_id]
+        if "updated_at" in existing:
+            set_clause = f"{set_clause}, updated_at = NOW()"
+        select_clause = _user_select_clause()
+
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 f"""
@@ -349,10 +380,11 @@ def update_profile(clerk_id: str, fields: dict) -> Optional[dict]:
 
 def get_schedules(clerk_id: str) -> list:
     """Return the schedules JSONB array for a user."""
-    if "schedules" not in _user_columns():
-        return []
     with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
+        _get_table_columns.cache_clear()
+        if "schedules" not in _user_columns():
+            return []
         with conn.cursor() as cur:
             cur.execute("SELECT schedules FROM users WHERE clerk_id = %s", (clerk_id,))
             row = cur.fetchone()
@@ -366,11 +398,12 @@ def get_schedules(clerk_id: str) -> list:
 
 def save_schedules(clerk_id: str, schedules: list) -> None:
     """Overwrite the schedules JSONB column for a user (creates row if missing)."""
-    columns = _user_columns()
-    if "schedules" not in columns:
-        return
     with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
+        _get_table_columns.cache_clear()
+        columns = _user_columns()
+        if "schedules" not in columns:
+            return
         with conn.cursor() as cur:
             insert_columns = ["clerk_id", "schedules"]
             values = [clerk_id, json.dumps(schedules)]
@@ -827,12 +860,16 @@ def _row_to_dict(row) -> dict:
             "clerk_id": row.get("clerk_id"),
             "email": _safe_decrypt(row.get("email")),
             "full_name": _safe_decrypt(row.get("full_name")),
+            "username": row.get("username"),
             "profile_image_url": row.get("profile_image_url"),
             "major": row.get("major"),
             "graduation_year": row.get("graduation_year"),
             "preferred_time": row.get("preferred_time"),
             "preferred_event_categories": row.get("preferred_event_categories") or [],
+            "preferred_event_interests": row.get("preferred_event_interests") or [],
             "preferred_social_mode": row.get("preferred_social_mode"),
+            "notification_frequency": row.get("notification_frequency") or "medium",
+            "onboarding_answers": row.get("onboarding_answers") or {},
             "event_preferences_completed": row.get("event_preferences_completed", False),
             "max_credits": row.get("max_credits"),
             "avoid_friday": row.get("avoid_friday", False),
@@ -849,51 +886,149 @@ def _row_to_dict(row) -> dict:
             "is_admin": row.get("is_admin", False),
             "bio": row.get("bio"),
             "website": row.get("website"),
+            "expo_push_token": row.get("expo_push_token"),
             "tags": [],
         }
 
-    schedules = row[14]
-    if isinstance(schedules, str):
-        schedules = json.loads(schedules)
+    ordered_columns = [column.strip() for column in _user_select_clause().split(",")]
+    mapped = {
+        column: row[index]
+        for index, column in enumerate(ordered_columns)
+        if index < len(row)
+    }
+    return _row_to_dict(mapped)
+
+
+def get_user_preference_profile(user_id: str) -> Optional[Dict[str, Any]]:
+    with get_pool().connection() as conn:
+        _ensure_user_schema_once(conn)
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT
+                    user_id,
+                    top_categories,
+                    top_interest_tags,
+                    avoid_tags,
+                    preferred_time_windows,
+                    notification_priority_tags,
+                    notification_frequency,
+                    profile_summary,
+                    profile_model,
+                    profile_version,
+                    profile_generated_at
+                FROM user_preferences
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            row = cur.fetchone()
+    if not row:
+        return None
     return {
-        "id": row[0],
-        "clerk_id": row[1],
-        "email": _safe_decrypt(row[2]),
-        "full_name": _safe_decrypt(row[3]),
-        "profile_image_url": row[4],
-        "major": row[5],
-        "graduation_year": row[6],
-        "preferred_time": row[7],
-        "preferred_event_categories": row[8] or [],
-        "preferred_social_mode": row[9],
-        "event_preferences_completed": row[10] or False,
-        "max_credits": row[11],
-        "avoid_friday": row[12],
-        "show_online_first": row[13],
-        "schedules": schedules or [],
-        "created_at": str(row[15]) if row[15] else None,
-        "updated_at": str(row[16]) if row[16] else None,
-        "canvas_access_token": _safe_decrypt(row[17]),
-        "canvas_refresh_token": _safe_decrypt(row[18]),
-        "canvas_expires_at": str(row[19]) if row[19] else None,
-        "canvas_instance_url": row[20],
-        "tos_accepted": row[21],
-        "tour_completed": row[22],
-        "is_admin": row[23] if len(row) > 23 else False,
-        "bio": row[24] if len(row) > 24 else None,
-        "website": row[25] if len(row) > 25 else None,
-        "tags": [],
+        "user_id": row.get("user_id"),
+        "top_categories": row.get("top_categories") or [],
+        "top_interest_tags": row.get("top_interest_tags") or [],
+        "avoid_tags": row.get("avoid_tags") or [],
+        "preferred_time_windows": row.get("preferred_time_windows") or [],
+        "notification_priority_tags": row.get("notification_priority_tags") or [],
+        "notification_frequency": row.get("notification_frequency") or "medium",
+        "profile_summary": row.get("profile_summary") or "",
+        "profile_model": row.get("profile_model") or "",
+        "profile_version": row.get("profile_version") or "",
+        "profile_generated_at": str(row.get("profile_generated_at")) if row.get("profile_generated_at") else None,
+    }
+
+
+def upsert_user_preference_profile(user_id: str, profile: Dict[str, Any]) -> Dict[str, Any]:
+    with get_pool().connection() as conn:
+        _ensure_user_schema_once(conn)
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                INSERT INTO user_preferences (
+                    user_id,
+                    top_categories,
+                    top_interest_tags,
+                    avoid_tags,
+                    preferred_time_windows,
+                    notification_priority_tags,
+                    notification_frequency,
+                    profile_summary,
+                    profile_model,
+                    profile_version,
+                    profile_generated_at,
+                    updated_at
+                )
+                VALUES (
+                    %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
+                    %s, %s, %s, %s, %s, NOW()
+                )
+                ON CONFLICT (user_id) DO UPDATE SET
+                    top_categories = EXCLUDED.top_categories,
+                    top_interest_tags = EXCLUDED.top_interest_tags,
+                    avoid_tags = EXCLUDED.avoid_tags,
+                    preferred_time_windows = EXCLUDED.preferred_time_windows,
+                    notification_priority_tags = EXCLUDED.notification_priority_tags,
+                    notification_frequency = EXCLUDED.notification_frequency,
+                    profile_summary = EXCLUDED.profile_summary,
+                    profile_model = EXCLUDED.profile_model,
+                    profile_version = EXCLUDED.profile_version,
+                    profile_generated_at = EXCLUDED.profile_generated_at,
+                    updated_at = NOW()
+                RETURNING
+                    user_id,
+                    top_categories,
+                    top_interest_tags,
+                    avoid_tags,
+                    preferred_time_windows,
+                    notification_priority_tags,
+                    notification_frequency,
+                    profile_summary,
+                    profile_model,
+                    profile_version,
+                    profile_generated_at
+                """,
+                (
+                    user_id,
+                    json.dumps(profile.get("top_categories") or []),
+                    json.dumps(profile.get("top_interest_tags") or []),
+                    json.dumps(profile.get("avoid_tags") or []),
+                    json.dumps(profile.get("preferred_time_windows") or []),
+                    json.dumps(profile.get("notification_priority_tags") or []),
+                    profile.get("notification_frequency") or "medium",
+                    profile.get("profile_summary") or "",
+                    profile.get("profile_model") or "",
+                    profile.get("profile_version") or "",
+                    profile.get("profile_generated_at"),
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return {
+        "user_id": row.get("user_id"),
+        "top_categories": row.get("top_categories") or [],
+        "top_interest_tags": row.get("top_interest_tags") or [],
+        "avoid_tags": row.get("avoid_tags") or [],
+        "preferred_time_windows": row.get("preferred_time_windows") or [],
+        "notification_priority_tags": row.get("notification_priority_tags") or [],
+        "notification_frequency": row.get("notification_frequency") or "medium",
+        "profile_summary": row.get("profile_summary") or "",
+        "profile_model": row.get("profile_model") or "",
+        "profile_version": row.get("profile_version") or "",
+        "profile_generated_at": str(row.get("profile_generated_at")) if row.get("profile_generated_at") else None,
     }
 
 
 def save_canvas_tokens(clerk_id: str, access_token: str, refresh_token: str, expires_at, instance_url: str = 'https://canvas.tamu.edu') -> None:
     """Save Canvas OAuth tokens for a user."""
-    columns = _user_columns()
-    required = {"canvas_access_token", "canvas_refresh_token", "canvas_expires_at", "canvas_instance_url"}
-    if not required.issubset(columns):
-        return
     with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
+        _get_table_columns.cache_clear()
+        columns = _user_columns()
+        required = {"canvas_access_token", "canvas_refresh_token", "canvas_expires_at", "canvas_instance_url"}
+        if not required.issubset(columns):
+            return
         with conn.cursor() as cur:
             update_clause = "canvas_access_token = %s, canvas_refresh_token = %s, canvas_expires_at = %s, canvas_instance_url = %s"
             if "updated_at" in columns:
@@ -917,11 +1052,12 @@ def save_canvas_tokens(clerk_id: str, access_token: str, refresh_token: str, exp
 
 def set_tour_completed(clerk_id: str) -> None:
     """Mark that the user has completed the interactive tour."""
-    columns = _user_columns()
-    if "tour_completed" not in columns:
-        return
     with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
+        _get_table_columns.cache_clear()
+        columns = _user_columns()
+        if "tour_completed" not in columns:
+            return
         with conn.cursor() as cur:
             update_clause = "tour_completed = TRUE"
             if "updated_at" in columns:
@@ -935,11 +1071,12 @@ def set_tour_completed(clerk_id: str) -> None:
 
 def set_tos_accepted(clerk_id: str) -> None:
     """Mark that the user has accepted the Terms of Service."""
-    columns = _user_columns()
-    if "tos_accepted" not in columns:
-        return
     with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
+        _get_table_columns.cache_clear()
+        columns = _user_columns()
+        if "tos_accepted" not in columns:
+            return
         with conn.cursor() as cur:
             update_clause = "tos_accepted = TRUE"
             if "updated_at" in columns:
@@ -993,4 +1130,3 @@ def get_push_tokens_for_users(clerk_ids: list[str]) -> dict[str, str]:
             )
             rows = cur.fetchall() or []
     return {row[0]: row[1] for row in rows if row[0] and row[1]}
-

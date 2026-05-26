@@ -23,6 +23,8 @@ from services import (
     tag_access_service,
     encryption_service,
     parking_realtime_service,
+    recommendation_engine,
+    notification_recommendation_service,
 )
 from services.rec_hours_data import REC_PLACE_ID_TO_FACILITY_KEY, weekly_payload_for_facility_key
 
@@ -106,6 +108,226 @@ def _combine_source_status(*statuses: str | None) -> str:
     if any(status == "missing" for status in normalized):
         return "missing"
     return "preview"
+
+
+DISPLAY_CATEGORY_TO_KEY = {
+    "sports": "sports",
+    "academic": "academic",
+    "food": "food",
+    "social": "social",
+    "health & wellness": "health_wellness",
+    "health wellness": "health_wellness",
+    "health_wellness": "health_wellness",
+    "entertainment": "entertainment",
+    "advocacy": "advocacy",
+    "miscellaneous": "miscellaneous",
+}
+
+CLASSIFICATION_CATEGORY_ORDER = (
+    "sports",
+    "academic",
+    "food",
+    "social",
+    "health_wellness",
+    "entertainment",
+    "advocacy",
+    "miscellaneous",
+)
+
+ONBOARDING_INTEREST_TO_PROFILE_TAGS = {
+    "fitness": ["fitness", "wellness"],
+    "sports": ["fitness"],
+    "music": ["music"],
+    "gaming": ["gaming"],
+    "tech": ["ai", "engineering"],
+    "art": ["art", "design"],
+    "volunteering": ["volunteering", "community"],
+    "startups": ["startup", "career"],
+    "food": ["free_food"],
+    "outdoors": ["outdoors"],
+    "culture": ["international"],
+    "faith": ["community"],
+    "social": ["community"],
+    "wellness": ["wellness"],
+}
+
+
+def _normalize_category_key(value: Any) -> Optional[str]:
+    token = str(value or "").strip().lower().replace("_", " ")
+    return DISPLAY_CATEGORY_TO_KEY.get(token)
+
+
+def _infer_event_primary_category(event: Dict[str, Any]) -> str:
+    primary = _normalize_category_key(event.get("primary_category"))
+    if primary:
+        return primary
+
+    categories = event.get("categories") or {}
+    if isinstance(categories, dict):
+        for key in CLASSIFICATION_CATEGORY_ORDER:
+            if categories.get(key):
+                return key
+
+    for key in CLASSIFICATION_CATEGORY_ORDER:
+        if event.get(key):
+            return key
+
+    return "miscellaneous"
+
+
+def _ensure_event_classification_metadata(event: Dict[str, Any]) -> None:
+    primary = _infer_event_primary_category(event)
+    event["primary_category"] = primary
+
+    if not isinstance(event.get("secondary_categories"), list):
+        categories = event.get("categories") or {}
+        secondary: List[str] = []
+        if isinstance(categories, dict):
+            secondary = [
+                key
+                for key in CLASSIFICATION_CATEGORY_ORDER
+                if key != primary and categories.get(key)
+            ][:3]
+        event["secondary_categories"] = secondary
+
+    event.setdefault("interest_tags", [])
+    event.setdefault("audience_tags", [])
+    event.setdefault("content_flags", [])
+    if not event.get("classification_confidence"):
+        event["classification_confidence"] = 0.55
+    if not event.get("classification_reasoning_summary"):
+        event["classification_reasoning_summary"] = "inferred_from_existing_category_flags"
+    if not event.get("classifier_version"):
+        event["classifier_version"] = "event_classifier_v1"
+    if not event.get("classification_model"):
+        event["classification_model"] = "deterministic_rules"
+    if not event.get("classified_at"):
+        event["classified_at"] = _utc_now_iso()
+
+
+def _preferred_time_to_windows(value: Any) -> List[str]:
+    token = str(value or "").strip().lower()
+    if token == "morning":
+        return ["weekday_day", "weekend_day"]
+    if token == "afternoon":
+        return ["weekday_day", "weekend_day"]
+    if token == "evening":
+        return ["weekday_night", "weekend_night"]
+    return ["any"]
+
+
+def _build_profile_from_user_row(clerk_id: str, user: Dict[str, Any]) -> Dict[str, Any]:
+    top_categories = []
+    for category in user.get("preferred_event_categories") or []:
+        normalized = _normalize_category_key(category)
+        if normalized and normalized not in top_categories:
+            top_categories.append(normalized)
+
+    top_interest_tags: List[str] = []
+    for tag in user.get("preferred_event_interests") or []:
+        token = str(tag).strip().lower().replace(" ", "_")
+        if not token:
+            continue
+        mapped = ONBOARDING_INTEREST_TO_PROFILE_TAGS.get(token, [token])
+        for candidate in mapped:
+            if candidate not in top_interest_tags:
+                top_interest_tags.append(candidate)
+
+    onboarding_answers = user.get("onboarding_answers") or {}
+    if not top_categories:
+        for category in onboarding_answers.get("preferred_sections", []):
+            normalized = _normalize_category_key(category)
+            if normalized and normalized not in top_categories:
+                top_categories.append(normalized)
+
+    return {
+        "user_id": clerk_id,
+        "top_categories": top_categories or ["miscellaneous"],
+        "top_interest_tags": top_interest_tags,
+        "avoid_tags": onboarding_answers.get("avoid_tags") or [],
+        "preferred_time_windows": _preferred_time_to_windows(user.get("preferred_time")),
+        "notification_priority_tags": onboarding_answers.get("notification_priority_tags") or top_interest_tags[:4],
+        "notification_frequency": user.get("notification_frequency") or "medium",
+        "profile_summary": "Profile synthesized from onboarding defaults.",
+        "profile_model": "profile_fallback_from_user",
+        "profile_version": "user_profile_v1",
+        "profile_generated_at": _utc_now_iso(),
+    }
+
+
+def _build_interaction_context(clerk_id: str, events: List[Dict[str, Any]], conn: Optional[psycopg.Connection] = None) -> Dict[str, Any]:
+    rows = _safe_db_fetchall(
+        "SELECT event_id, response FROM campus_event_rsvps WHERE clerk_id = %s",
+        (clerk_id,),
+        conn=conn,
+    )
+    if not rows:
+        return {}
+
+    events_by_id = {str(event.get("event_id")): event for event in events if event.get("event_id")}
+    positive_ids: set[str] = set()
+    negative_ids: set[str] = set()
+    positive_categories: set[str] = set()
+    positive_tags: set[str] = set()
+    hidden_ids: set[str] = set()
+    dismissed_ids: set[str] = set()
+
+    for row in rows:
+        event_id = str(row.get("event_id") or "")
+        response = str(row.get("response") or "").lower()
+        if not event_id:
+            continue
+        if response in {"going", "interested", "saved", "liked"}:
+            positive_ids.add(event_id)
+            event = events_by_id.get(event_id)
+            if event:
+                primary = _normalize_category_key(event.get("primary_category"))
+                if primary:
+                    positive_categories.add(primary)
+                for tag in event.get("interest_tags") or []:
+                    value = str(tag).strip().lower().replace(" ", "_")
+                    if value:
+                        positive_tags.add(value)
+        elif response in {"not_interested", "hidden", "dismissed", "disliked"}:
+            negative_ids.add(event_id)
+            if response == "hidden":
+                hidden_ids.add(event_id)
+            if response in {"dismissed", "not_interested", "disliked"}:
+                dismissed_ids.add(event_id)
+
+    return {
+        "positive_event_ids": list(positive_ids),
+        "negative_event_ids": list(negative_ids),
+        "positive_categories": list(positive_categories),
+        "positive_tags": list(positive_tags),
+        "hidden_event_ids": list(hidden_ids),
+        "dismissed_event_ids": list(dismissed_ids),
+    }
+
+
+def _attach_recommendation_scores(
+    events: List[Dict[str, Any]],
+    user_profile: Optional[Dict[str, Any]],
+    interaction_context: Optional[Dict[str, Any]] = None,
+) -> None:
+    if not user_profile:
+        return
+
+    for event in events:
+        if event.get("is_admin_event"):
+            event["recommendation_score"] = 0.0
+            event["for_u_match"] = False
+            continue
+        score = recommendation_engine.score_event_for_user(
+            event,
+            user_profile,
+            interaction_context=interaction_context,
+        )
+        event["recommendation_score"] = score
+        event["for_u_match"] = (
+            score >= 4.5
+            and recommendation_engine.is_onboarding_aligned(event, user_profile)
+        )
 
 
 def _score_personalized_relevance(event: Dict[str, Any], user: Dict[str, Any]) -> float:
@@ -429,6 +651,17 @@ def _ensure_social_tables(conn: Optional[psycopg.Connection] = None) -> None:
                         muted BOOLEAN NOT NULL DEFAULT TRUE,
                         updated_at TIMESTAMPTZ DEFAULT NOW(),
                         PRIMARY KEY (user_clerk_id, admin_clerk_id)
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS campus_event_notifications (
+                        clerk_id TEXT NOT NULL,
+                        event_id TEXT NOT NULL,
+                        recommendation_score DOUBLE PRECISION,
+                        notified_at TIMESTAMPTZ DEFAULT NOW(),
+                        PRIMARY KEY (clerk_id, event_id)
                     )
                     """
                 )
@@ -1166,6 +1399,8 @@ def create_connection_request(requester_id: str, recipient_id: str) -> Dict[str,
         return {"status": "success", "requester_id": requester_id, "recipient_id": recipient_id}
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
+
+
 def get_events_snapshot(
     clerk_id: Optional[str] = None,
     limit: int = 100,
@@ -1182,8 +1417,13 @@ def get_events_snapshot(
     muted_admin_ids: set[str] = set()
     bypass_tag_restrictions = False
     user_access_tags: list[str] = []
+    user: Dict[str, Any] = {}
+    user_preference_profile: Optional[Dict[str, Any]] = None
     if clerk_id:
         user = user_repository.get_user(clerk_id) or {}
+        user_preference_profile = user_repository.get_user_preference_profile(clerk_id)
+        if not user_preference_profile and user:
+            user_preference_profile = _build_profile_from_user_row(clerk_id, user)
         bypass_tag_restrictions = bool(user.get("is_admin"))
         user_access_tags = tag_repository.get_user_tags(clerk_id)
         rows = _safe_db_fetchall(
@@ -1326,6 +1566,8 @@ def get_events_snapshot(
     has_modern_events = bool(events_copy or off_campus_events)
     # Re-integrate admin events AFTER tag filtering to ensure they bypass it entirely
     events = admin_events_list + off_campus_events + events
+    for event in events:
+        _ensure_event_classification_metadata(event)
     print(f"[EVENTS_DEBUG] after merge: {len(events)} total events (has_modern_events={has_modern_events})")
     # Filter for upcoming events, while keeping featured/admin events on their own shorter window.
     events = [
@@ -1334,6 +1576,10 @@ def get_events_snapshot(
     ]
     admin_after_upcoming = [e for e in events if e.get('is_admin_event')]
     print(f"[EVENTS_DEBUG] after upcoming filter: {len(events)} total, {len(admin_after_upcoming)} admin")
+
+    interaction_context = _build_interaction_context(clerk_id, events, conn=conn) if clerk_id else {}
+    _attach_recommendation_scores(events, user_preference_profile, interaction_context)
+
     events.sort(key=_event_start_sort_key)
 
     if has_modern_events or admin_events_list:
@@ -1344,22 +1590,30 @@ def get_events_snapshot(
                 if e.get("campus_interest_label", "high") != "low" or e.get("is_admin_event")
             ]
         if category:
-            if category.lower() == "for u" and clerk_id and user:
-                # Personalize sorting for "For U"
-                for event in events:
-                    event["personalization_score"] = _score_personalized_relevance(event, user)
-                
-                # Sort: Personalization (highest first), then start time (soonest first)
-                events.sort(key=lambda e: (-e.get("personalization_score", 0), _event_start_sort_key(e)))
-                
-                # "For U" is a meta-category, so we don't filter by a 'for u' string in categories dict.
-                # We just return the personalized list.
-                category = None
+            category_normalized = _normalize_category_key(category) or str(category).strip().lower().replace(" ", "_")
+            if str(category).strip().lower() == "for u":
+                if user_preference_profile:
+                    events = [e for e in events if not e.get("is_admin_event")]
+                    events = [e for e in events if e.get("for_u_match") or (e.get("recommendation_score") or 0.0) > 0.0]
+                    events.sort(key=lambda e: (-(e.get("recommendation_score") or 0.0), _event_start_sort_key(e)))
+                elif clerk_id and user:
+                    # Legacy fallback when no generated profile exists yet.
+                    for event in events:
+                        event["personalization_score"] = _score_personalized_relevance(event, user)
+                    events = [e for e in events if not e.get("is_admin_event")]
+                    events.sort(key=lambda e: (-e.get("personalization_score", 0), _event_start_sort_key(e)))
+                else:
+                    events = [e for e in events if not e.get("is_admin_event")]
             else:
-                events = [
-                    e for e in events
-                    if e.get("categories", {}).get(category.lower()) == 1
-                ]
+                if category_normalized == "featured":
+                    events = [e for e in events if e.get("is_admin_event")]
+                else:
+                    events = [
+                        e for e in events
+                        if e.get("primary_category") == category_normalized
+                        or e.get("categories", {}).get(category_normalized) == 1
+                        or (category_normalized == "promotions" and (e.get("is_promotion") or e.get("categories", {}).get("promotions") == 1))
+                    ]
         limited = _merge_admin_events_before_limit(events, limit) if limit else events
         return {
             "generated_at": _utc_now_iso(),
@@ -1422,12 +1676,16 @@ def get_events_snapshot(
     
     # Merge admin events with fallback events
     events = admin_events_list + fallback_events
+    for event in events:
+        _ensure_event_classification_metadata(event)
     
     # Final filter and sort
     events = [
         event for event in events 
         if (_is_admin_event_visible(event) if event.get("is_admin_event") else _is_event_upcoming(event))
     ]
+    fallback_interaction_context = _build_interaction_context(clerk_id, events, conn=conn) if clerk_id else {}
+    _attach_recommendation_scores(events, user_preference_profile, fallback_interaction_context)
     events.sort(key=_event_start_sort_key)
     limited = _merge_admin_events_before_limit(events, limit) if limit else events
     
@@ -1437,6 +1695,134 @@ def get_events_snapshot(
         "source_status": "preview",
         "source_statuses": source_statuses,
         "events": limited,
+    }
+
+
+def _notification_delivery_state(clerk_id: str, conn: Optional[psycopg.Connection] = None) -> Dict[str, Any]:
+    rows = _safe_db_fetchall(
+        """
+        SELECT event_id, notified_at
+        FROM campus_event_notifications
+        WHERE clerk_id = %s
+        ORDER BY notified_at DESC
+        LIMIT 500
+        """,
+        (clerk_id,),
+        conn=conn,
+    )
+    already_notified_ids = [str(row.get("event_id")) for row in rows if row.get("event_id")]
+
+    day_count_row = _safe_db_fetchone(
+        """
+        SELECT COUNT(*) AS sent_count
+        FROM campus_event_notifications
+        WHERE clerk_id = %s
+          AND notified_at >= date_trunc('day', NOW())
+        """,
+        (clerk_id,),
+        conn=conn,
+    )
+    sent_count = int(day_count_row.get("sent_count") or 0) if day_count_row else 0
+    return {"already_notified_event_ids": already_notified_ids, "daily_sent_count": sent_count}
+
+
+def _record_notification_deliveries(
+    clerk_id: str,
+    events: List[Dict[str, Any]],
+    conn: Optional[psycopg.Connection] = None,
+) -> None:
+    if not events:
+        return
+
+    rows = []
+    for event in events:
+        event_id = str(event.get("event_id") or event.get("id") or "").strip()
+        if not event_id:
+            continue
+        rows.append((clerk_id, event_id, float(event.get("recommendation_score") or 0.0)))
+
+    if not rows:
+        return
+
+    query = """
+        INSERT INTO campus_event_notifications (clerk_id, event_id, recommendation_score, notified_at)
+        VALUES (%s, %s, %s, NOW())
+        ON CONFLICT (clerk_id, event_id) DO UPDATE
+        SET recommendation_score = EXCLUDED.recommendation_score,
+            notified_at = NOW()
+    """
+
+    try:
+        if conn:
+            with conn.cursor() as cur:
+                cur.executemany(query, rows)
+            conn.commit()
+            return
+        with get_pool().connection() as new_conn:
+            with new_conn.cursor() as cur:
+                cur.executemany(query, rows)
+            new_conn.commit()
+    except Exception:
+        pass
+
+
+def get_recommended_events(
+    clerk_id: Optional[str],
+    limit: int = 50,
+    campus: str = "tamu",
+    conn: Optional[psycopg.Connection] = None,
+    force_refresh: bool = False,
+) -> Dict[str, Any]:
+    snapshot = get_events_snapshot(
+        clerk_id=clerk_id,
+        limit=max(limit * 6, 300),
+        category=None,
+        student_relevant_only=False,
+        campus=campus,
+        conn=conn,
+        force_refresh=force_refresh,
+    )
+    events = snapshot.get("events", []) if isinstance(snapshot, dict) else []
+    events = [event for event in events if not event.get("is_admin_event")]
+
+    user_profile: Optional[Dict[str, Any]] = None
+    interaction_context: Dict[str, Any] = {}
+    if clerk_id:
+        user_profile = user_repository.get_user_preference_profile(clerk_id)
+        if not user_profile:
+            user = user_repository.get_user(clerk_id) or {}
+            if user:
+                user_profile = _build_profile_from_user_row(clerk_id, user)
+        if user_profile:
+            interaction_context = _build_interaction_context(clerk_id, events, conn=conn)
+            ranked = recommendation_engine.rank_events_for_user(
+                events,
+                user_profile,
+                interaction_context=interaction_context,
+                include_debug=True,
+            )
+        else:
+            ranked = sorted(
+                events,
+                key=lambda event: (
+                    -(event.get("campus_interest_score") or 0),
+                    _event_start_sort_key(event),
+                ),
+            )
+    else:
+        ranked = sorted(
+            events,
+            key=lambda event: (
+                -(event.get("campus_interest_score") or 0),
+                _event_start_sort_key(event),
+            ),
+        )
+
+    return {
+        "generated_at": _utc_now_iso(),
+        "stale_after": 300,
+        "source_status": snapshot.get("source_status", "live") if isinstance(snapshot, dict) else "live",
+        "events": ranked[:limit],
     }
 
 
@@ -1710,7 +2096,7 @@ def get_notification_hub(
     clerk_id: str,
     academic_data: Optional[Dict[str, Any]] = None,
     dining_data: Optional[Dict[str, Any]] = None,
-    events_data: Optional[Dict[str, Any]] = None,
+    events_data: Optional[Any] = None,
     network_data: Optional[Dict[str, Any]] = None,
     conn: Optional[psycopg.Connection] = None,
 ) -> List[Dict[str, Any]]:
@@ -1718,11 +2104,16 @@ def get_notification_hub(
     dining = dining_data or get_dining_snapshot(clerk_id, conn=conn)
     events_snapshot = events_data or get_events_snapshot(
         clerk_id,
-        limit=3,
+        limit=40,
         include_off_campus=False,
         conn=conn,
     )
-    events = events_snapshot.get("events", []) if isinstance(events_snapshot, dict) else (events_snapshot or [])
+    if isinstance(events_snapshot, dict):
+        events = events_snapshot.get("events", []) or []
+    elif isinstance(events_snapshot, list):
+        events = events_snapshot
+    else:
+        events = []
     network = network_data or discover_network(clerk_id, limit=3, conn=conn)
 
     notifications: List[Dict[str, Any]] = []
@@ -1747,14 +2138,32 @@ def get_notification_hub(
         }
     )
 
-    for event in events[:2]:
+    user = user_repository.get_user(clerk_id) or {}
+    user_profile = user_repository.get_user_preference_profile(clerk_id)
+    if not user_profile and user:
+        user_profile = _build_profile_from_user_row(clerk_id, user)
+
+    interaction_context = _build_interaction_context(clerk_id, events, conn=conn)
+    delivery_state = _notification_delivery_state(clerk_id, conn=conn)
+    candidate_events = notification_recommendation_service.select_notification_candidates(
+        [event for event in events if not event.get("is_admin_event")],
+        user_profile or _build_profile_from_user_row(clerk_id, user),
+        interaction_context=interaction_context,
+        already_notified_event_ids=delivery_state.get("already_notified_event_ids", []),
+        daily_sent_count=delivery_state.get("daily_sent_count", 0),
+    )
+
+    selected_candidates = candidate_events[:2]
+    _record_notification_deliveries(clerk_id, selected_candidates, conn=conn)
+
+    for event in selected_candidates:
         notifications.append(
             {
                 "id": f"event-{event['event_id']}",
                 "title": event.get("title", "Campus Event"),
                 "detail": f"{event.get('start_time', 'TBA')} · {event.get('location', 'TBA')}",
                 "category": "social",
-                "urgency": "medium",
+                "urgency": "medium" if (event.get("recommendation_score") or 0) < 8 else "high",
             }
         )
 

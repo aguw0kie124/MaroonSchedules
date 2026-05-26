@@ -164,7 +164,13 @@ function UserSync({ children }: { children: React.ReactNode }) {
             } else {
               setPreferredEventCategories([]);
             }
-            setPreferredEventInterests([]);
+            if (Array.isArray(data.preferred_event_interests)) {
+              setPreferredEventInterests(
+                data.preferred_event_interests.filter((entry: unknown): entry is string => typeof entry === 'string'),
+              );
+            } else {
+              setPreferredEventInterests([]);
+            }
             if (
               data.preferred_time === 'Morning' ||
               data.preferred_time === 'Afternoon' ||

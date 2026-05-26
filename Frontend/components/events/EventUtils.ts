@@ -43,6 +43,13 @@ export interface CampusEventResponse {
   source_name?: string | null;
   tags?: string[] | null;
   access_tags?: string[] | null;
+  primary_category?: string | null;
+  secondary_categories?: string[] | null;
+  interest_tags?: string[] | null;
+  audience_tags?: string[] | null;
+  content_flags?: string[] | null;
+  recommendation_score?: number | null;
+  for_u_match?: boolean | null;
   has_food?: boolean;
   food_confidence?: number;
   food_type?: string | null;
@@ -74,6 +81,13 @@ export interface TAMUEvent {
   url?: string;
   tags?: string[] | null;
   access_tags?: string[] | null;
+  primary_category?: string | null;
+  secondary_categories?: string[] | null;
+  interest_tags?: string[] | null;
+  audience_tags?: string[] | null;
+  content_flags?: string[] | null;
+  recommendation_score?: number | null;
+  for_u_match?: boolean | null;
   event_types?: string[] | null;
   group_title?: string;
   location_lat?: number | null;
@@ -243,6 +257,17 @@ export function getSearchBlob(event: TAMUEvent) {
 }
 
 export function classifyCategory(event: TAMUEvent): ExploreCategory {
+  if (event.primary_category) {
+    const normalized = event.primary_category.toLowerCase().replace(/\s+/g, '_');
+    if (normalized === 'sports') return 'Sports';
+    if (normalized === 'academic') return 'Academic';
+    if (normalized === 'food') return 'Food';
+    if (normalized === 'social') return 'Social';
+    if (normalized === 'health_wellness') return 'Health & Wellness';
+    if (normalized === 'entertainment') return 'Entertainment';
+    if (normalized === 'advocacy') return 'Advocacy';
+    if (normalized === 'miscellaneous') return 'Miscellaneous';
+  }
   if (event.categories) {
     if (event.categories.promotions || event.is_promotion) return 'Promotions';
     if (event.categories.food) return 'Food';

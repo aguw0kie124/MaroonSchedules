@@ -10,18 +10,30 @@ Integrates:
 from __future__ import annotations
 
 import logging
+import os
 import re
+import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dateutil import parser as dtparse
 
-from classifiers.category_classifier import classify_event
+from classifiers.category_classifier import classify_event as classify_event_rules
 from food_detector import detect_food
 from mappers.department_mapper import map_department
 from models import Event, SourcePriority
 
 logger = logging.getLogger("tamu_crawler.normalizer")
+
+BACKEND_DIR = Path(__file__).resolve().parents[1] / "Backend"
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+try:
+    from services.event_classification_service import classify_event_with_metadata
+except Exception:  # pragma: no cover - graceful fallback when backend deps are unavailable
+    classify_event_with_metadata = None
 
 # Source-priority weights for freshness score
 PRIORITY_WEIGHT = {
@@ -45,6 +57,20 @@ NON_CS_LOCATIONS = [
     r"\bonline\s+only\b",
     r"\bvirtual\s+only\b",
 ]
+
+PRIMARY_CATEGORY_ORDER = [
+    "sports",
+    "academic",
+    "food",
+    "social",
+    "health_wellness",
+    "entertainment",
+    "advocacy",
+]
+
+
+def _llm_classification_enabled() -> bool:
+    return os.getenv("EVENT_CLASSIFICATION_ALLOW_LLM", "").strip().lower() in {"1", "true", "yes"}
 
 
 def _compute_freshness(
@@ -146,6 +172,41 @@ def _coerce_str_list(value: Any) -> List[str]:
     return [str(value).strip()]
 
 
+def _heuristic_classification_fallback(
+    raw: Dict[str, Any],
+    categories: Dict[str, int],
+    category_reasons: List[str],
+) -> tuple[Dict[str, Any], Dict[str, str]]:
+    primary = "miscellaneous"
+    for key in PRIMARY_CATEGORY_ORDER:
+        if categories.get(key, 0) == 1:
+            primary = key
+            break
+
+    secondary = [
+        key
+        for key in PRIMARY_CATEGORY_ORDER
+        if key != primary and categories.get(key, 0) == 1
+    ][:3]
+
+    return (
+        {
+            "primary_category": primary,
+            "secondary_categories": secondary,
+            "interest_tags": [],
+            "audience_tags": [],
+            "content_flags": [],
+            "confidence": 0.45,
+            "reasoning_summary": (category_reasons[0] if category_reasons else "heuristic_fallback")[:90],
+        },
+        {
+            "classifier_version": "event_classifier_v1",
+            "classification_model": "legacy_heuristics",
+            "classified_at": datetime.utcnow().isoformat() + "Z",
+        },
+    )
+
+
 def normalize_event(
     raw: Dict[str, Any],
     source_priority: str = "medium",
@@ -225,7 +286,7 @@ def normalize_event(
     )
 
     # --- Category classification ---
-    categories, category_reasons = classify_event(
+    categories, category_reasons = classify_event_rules(
         title=raw.get("title", ""),
         description=raw.get("description"),
         host_name=raw.get("host_name"),
@@ -242,6 +303,44 @@ def normalize_event(
 
     # Freshness
     freshness = _compute_freshness(start_time, source_priority)
+
+    classification_input = {
+        "title": raw.get("title", ""),
+        "description": raw.get("description"),
+        "location": raw.get("location"),
+        "host_name": raw.get("host_name"),
+        "host_type": host_type,
+        "department_name": dept_name,
+        "tags": raw.get("tags", []),
+        "audience": raw.get("audience", ["undergrad"]),
+        "campus": raw.get("campus", "college_station"),
+        "affiliation": raw.get("affiliation", "tamu"),
+        "registration_status": raw.get("registration_status"),
+        "duration_minutes": duration_minutes,
+        "social": categories.get("social", 0),
+        "sports": categories.get("sports", 0),
+        "academic": categories.get("academic", 0),
+        "food": categories.get("food", 0),
+        "advocacy": categories.get("advocacy", 0),
+        "entertainment": categories.get("entertainment", 0),
+        "health_wellness": categories.get("health_wellness", 0),
+        "professional": categories.get("professional", 0),
+        "has_food": has_food,
+        "food_confidence": food_confidence,
+        "start_time": start_time.isoformat(),
+        "seats_available": raw.get("seats_available"),
+        "seats_total": raw.get("seats_total"),
+    }
+    if callable(classify_event_with_metadata):
+        try:
+            classification, classification_meta = classify_event_with_metadata(
+                classification_input,
+                allow_llm=_llm_classification_enabled(),
+            )
+        except Exception:
+            classification, classification_meta = _heuristic_classification_fallback(raw, categories, category_reasons)
+    else:
+        classification, classification_meta = _heuristic_classification_fallback(raw, categories, category_reasons)
 
     # Timestamps
     now = datetime.utcnow()
@@ -299,6 +398,16 @@ def normalize_event(
             casual=categories.get("casual", 0),
             professional=categories.get("professional", 0),
             category_reasons=category_reasons,
+            primary_category=classification.get("primary_category", "miscellaneous"),
+            secondary_categories=classification.get("secondary_categories", []),
+            interest_tags=classification.get("interest_tags", []),
+            audience_tags=classification.get("audience_tags", []),
+            content_flags=classification.get("content_flags", []),
+            classification_confidence=float(classification.get("confidence") or 0.0),
+            classification_reasoning_summary=classification.get("reasoning_summary", ""),
+            classifier_version=classification_meta.get("classifier_version", ""),
+            classification_model=classification_meta.get("classification_model", ""),
+            classified_at=_safe_parse_dt(classification_meta.get("classified_at")),
             duration_minutes=duration_minutes,
             student_org_prob=student_org_prob,
             audience=raw.get("audience", ["undergrad"]),

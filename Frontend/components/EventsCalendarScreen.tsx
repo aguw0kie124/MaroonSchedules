@@ -113,6 +113,18 @@ interface CampusEventResponse {
   source_name?: string | null;
   tags?: string[] | null;
   access_tags?: string[] | null;
+  primary_category?: string | null;
+  secondary_categories?: string[] | null;
+  interest_tags?: string[] | null;
+  audience_tags?: string[] | null;
+  content_flags?: string[] | null;
+  classification_confidence?: number | null;
+  classification_reasoning_summary?: string | null;
+  classification_model?: string | null;
+  classifier_version?: string | null;
+  classified_at?: string | null;
+  recommendation_score?: number | null;
+  for_u_match?: boolean | null;
   has_food?: boolean;
   food_confidence?: number;
   food_type?: string | null;
@@ -146,6 +158,18 @@ interface TAMUEvent {
   url?: string;
   tags?: string[] | null;
   access_tags?: string[] | null;
+  primary_category?: string | null;
+  secondary_categories?: string[] | null;
+  interest_tags?: string[] | null;
+  audience_tags?: string[] | null;
+  content_flags?: string[] | null;
+  classification_confidence?: number | null;
+  classification_reasoning_summary?: string | null;
+  classification_model?: string | null;
+  classifier_version?: string | null;
+  classified_at?: string | null;
+  recommendation_score?: number | null;
+  for_u_match?: boolean | null;
   event_types?: string[] | null;
   group_title?: string;
   location_lat?: number | null;
@@ -679,6 +703,17 @@ function matchesLocationFilter(event: TAMUEvent, filter: string) {
 
 function classifyCategory(event: TAMUEvent): ExploreCategory {
   if (event.is_admin_event) return 'Featured';
+  if (event.primary_category) {
+    const normalized = event.primary_category.toLowerCase().replace(/\s+/g, '_');
+    if (normalized === 'sports') return 'Sports';
+    if (normalized === 'academic') return 'Academic';
+    if (normalized === 'food') return 'Food';
+    if (normalized === 'social') return 'Social';
+    if (normalized === 'health_wellness') return 'Health & Wellness';
+    if (normalized === 'entertainment') return 'Entertainment';
+    if (normalized === 'advocacy') return 'Advocacy';
+    if (normalized === 'miscellaneous') return 'Miscellaneous';
+  }
   if (event.categories) {
     if (event.categories.featured) return 'Featured';
     if (event.categories.promotions || event.is_promotion) return 'Promotions';
@@ -1260,7 +1295,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     refetch: fetchEvents,
     isRefetching: refreshing,
   } = useQuery({
-    queryKey: ['campus-events', user?.id],
+    queryKey: ['campus-events', API_URL, user?.id],
     queryFn: async () => {
       const params = new URLSearchParams({
         limit: '1000',
@@ -1290,6 +1325,18 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             url: event.link || event.source_url || '',
             tags: event.tags || null,
             access_tags: event.access_tags || null,
+            primary_category: event.primary_category ?? null,
+            secondary_categories: event.secondary_categories ?? null,
+            interest_tags: event.interest_tags ?? null,
+            audience_tags: event.audience_tags ?? null,
+            content_flags: event.content_flags ?? null,
+            classification_confidence: event.classification_confidence ?? null,
+            classification_reasoning_summary: event.classification_reasoning_summary ?? null,
+            classification_model: event.classification_model ?? null,
+            classifier_version: event.classifier_version ?? null,
+            classified_at: event.classified_at ?? null,
+            recommendation_score: event.recommendation_score ?? null,
+            for_u_match: event.for_u_match ?? null,
             event_types: event.has_food ? ['Free Food'] : null,
             group_title:
               event.organization_name ||
@@ -1325,12 +1372,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             _searchBlob: searchBlob,
             _category: classifyCategory(event),
             _socialMode: getSocialMode({ ...event, _searchBlob: searchBlob }),
+            _forYouScore: event.recommendation_score ?? undefined,
+            _forYouMatched: event.for_u_match ?? undefined,
           };
         })
         .sort((a, b) => a.date_ts - b.date_ts);
     },
     staleTime: 1000 * 60 * 15, // 15 mins for events
-    refetchOnMount: false,
+    refetchOnMount: true,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
@@ -1402,6 +1451,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const personalizedEvents = useMemo(
     () =>
       events.map((event) => {
+        if (typeof event._forYouScore === 'number' || typeof event._forYouMatched === 'boolean') {
+          return {
+            ...event,
+            _forYouMatched: typeof event._forYouMatched === 'boolean' ? event._forYouMatched : (event._forYouScore ?? 0) > 0,
+            _forYouScore: typeof event._forYouScore === 'number' ? event._forYouScore : 0,
+            _forYouReasons: ['onboarding_profile_match'],
+          };
+        }
         const meta = getForYouMeta(event, effectiveProfilePreferences);
         return {
           ...event,

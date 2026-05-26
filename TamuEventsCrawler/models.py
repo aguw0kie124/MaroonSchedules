@@ -126,6 +126,18 @@ class Event(BaseModel):
     professional: int = 0
     category_reasons: List[str] = Field(default_factory=list)
 
+    # --- LLM classification metadata (fixed frontend taxonomy) ---
+    primary_category: str = "miscellaneous"
+    secondary_categories: List[str] = Field(default_factory=list)
+    interest_tags: List[str] = Field(default_factory=list)
+    audience_tags: List[str] = Field(default_factory=list)
+    content_flags: List[str] = Field(default_factory=list)
+    classification_confidence: float = 0.0
+    classification_reasoning_summary: str = ""
+    classifier_version: str = ""
+    classification_model: str = ""
+    classified_at: Optional[datetime] = None
+
     # --- Food detection ---
     has_food: bool = False
     food_confidence: float = 0.0

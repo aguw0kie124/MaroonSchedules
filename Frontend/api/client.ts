@@ -362,6 +362,14 @@ export const fetchCampusEvents = async (
     return requestJson(`/campus/events?${params.toString()}`);
 };
 
+export const fetchRecommendedEvents = async (clerkId?: string, limit = 40, campus = 'tamu') => {
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    params.set('campus', campus);
+    if (clerkId) params.set('clerk_id', clerkId);
+    return requestJson(`/events/recommended?${params.toString()}`);
+};
+
 export const fetchCampusPlacesRegistry = async () => {
     return requestJson('/campus/places/registry');
 };

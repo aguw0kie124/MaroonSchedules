@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -13,6 +13,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import {
   ArrowRight,
+  BellOff,
   BookOpen,
   Briefcase,
   CheckCircle,
@@ -34,7 +35,6 @@ import {
   Pizza,
   Rocket,
   Scale,
-  Speech,
   Sprout,
   Stethoscope,
   Theater,
@@ -55,7 +55,15 @@ type Props = {
   onDone: () => void;
 };
 
-type StoredCategory = 'Featured' | 'Food' | 'Sports' | 'Social' | 'Academic' | 'Entertainment';
+type StoredCategory =
+  | 'Sports'
+  | 'Academic'
+  | 'Food'
+  | 'Social'
+  | 'Health & Wellness'
+  | 'Entertainment'
+  | 'Advocacy'
+  | 'Miscellaneous';
 
 const { width } = Dimensions.get('window');
 
@@ -102,18 +110,53 @@ const ACADEMICS = [
   { id: 'private', label: 'Prefer not to say', icon: EyeOff },
 ];
 
-const EVENTS = [
-  { id: 'free-food', label: 'Free Food', icon: Pizza },
-  { id: 'club-meetings', label: 'Club Meetings', icon: Users },
-  { id: 'career-fairs', label: 'Career Fairs', icon: Briefcase },
-  { id: 'academic-talks', label: 'Academic Talks', icon: Speech },
-  { id: 'social-events', label: 'Social Events', icon: Zap },
+const SECTION_OPTIONS: Array<{ id: string; label: StoredCategory; icon: React.ComponentType<any> }> = [
   { id: 'sports', label: 'Sports', icon: Trophy },
-  { id: 'performances', label: 'Performances', icon: Theater },
-  { id: 'workshops', label: 'Workshops', icon: Monitor },
-  { id: 'networking', label: 'Networking', icon: Users },
-  { id: 'volunteer-events', label: 'Volunteer Events', icon: Heart },
-  { id: 'traditions', label: 'Campus Traditions', icon: Ticket },
+  { id: 'academic', label: 'Academic', icon: GraduationCap },
+  { id: 'food', label: 'Food', icon: Pizza },
+  { id: 'social', label: 'Social', icon: Users },
+  { id: 'health_wellness', label: 'Health & Wellness', icon: Heart },
+  { id: 'entertainment', label: 'Entertainment', icon: Theater },
+  { id: 'advocacy', label: 'Advocacy', icon: Scale },
+  { id: 'miscellaneous', label: 'Miscellaneous', icon: MoreHorizontal },
+];
+
+const FOCUS_AREAS = [
+  { id: 'food-centered', label: 'Food-Centered Events', icon: Pizza },
+  { id: 'wellness-fitness', label: 'Wellness & Fitness', icon: Dumbbell },
+  { id: 'social-community', label: 'Social & Community', icon: Users },
+  { id: 'entertainment-arts', label: 'Entertainment / Music / Art', icon: Music },
+  { id: 'advocacy-service', label: 'Advocacy / Service / Civic', icon: Heart },
+];
+
+const INDOOR_OUTDOOR_OPTIONS = [
+  { id: 'indoor', label: 'Indoor', icon: Monitor },
+  { id: 'outdoor', label: 'Outdoor', icon: Trees },
+  { id: 'either', label: 'Either', icon: Globe },
+];
+
+const WEEKDAY_WEEKEND_OPTIONS = [
+  { id: 'weekday', label: 'Weekdays', icon: Briefcase },
+  { id: 'weekend', label: 'Weekends', icon: Ticket },
+  { id: 'either', label: 'Either', icon: Globe },
+];
+
+const DAY_NIGHT_OPTIONS = [
+  { id: 'day', label: 'Day', icon: Sprout },
+  { id: 'night', label: 'Night', icon: Theater },
+  { id: 'either', label: 'Either', icon: Globe },
+];
+
+const FREE_PAID_OPTIONS = [
+  { id: 'free', label: 'Mostly Free', icon: Pizza },
+  { id: 'paid', label: 'Paid Is Fine', icon: Briefcase },
+  { id: 'either', label: 'Either', icon: Globe },
+];
+
+const NOTIFICATION_FREQUENCY_OPTIONS = [
+  { id: 'low', label: 'Low', icon: Leaf },
+  { id: 'medium', label: 'Medium', icon: Zap },
+  { id: 'high', label: 'High', icon: BellOff },
 ];
 
 const MAJOR_TO_ACADEMIC_ID: Record<MajorOption, string> = {
@@ -141,28 +184,41 @@ const ACADEMIC_TO_MAJOR: Partial<Record<string, MajorOption>> = {
   medicine: 'Medicine',
 };
 
-const STORED_CATEGORY_TO_EVENT: Record<StoredCategory, string> = {
-  Featured: 'traditions',
-  Food: 'free-food',
-  Sports: 'sports',
-  Social: 'social-events',
-  Academic: 'academic-talks',
-  Entertainment: 'performances',
+const INTEREST_ID_TO_TAGS: Record<string, string[]> = {
+  fitness: ['fitness', 'wellness'],
+  sports: ['fitness'],
+  music: ['music'],
+  gaming: ['gaming'],
+  tech: ['ai', 'engineering'],
+  art: ['art', 'design'],
+  volunteering: ['volunteering', 'community'],
+  startups: ['startup', 'career'],
+  food: ['free_food'],
+  outdoors: ['outdoors'],
+  culture: ['international'],
+  faith: ['community'],
+  social: ['community'],
+  wellness: ['wellness'],
 };
 
-const EVENT_TO_STORED_CATEGORY: Record<string, StoredCategory[]> = {
-  'free-food': ['Food'],
-  'club-meetings': ['Social'],
-  'career-fairs': ['Academic'],
-  'academic-talks': ['Academic'],
-  'social-events': ['Social'],
-  sports: ['Sports'],
-  performances: ['Entertainment'],
-  workshops: ['Academic'],
-  networking: ['Academic', 'Social'],
-  'volunteer-events': ['Social'],
-  traditions: ['Entertainment', 'Social'],
+const ACADEMIC_ID_TO_TAGS: Record<string, string[]> = {
+  engineering: ['engineering', 'robotics'],
+  business: ['business', 'career'],
+  'liberal-arts': ['community'],
+  science: ['research', 'math'],
+  law: ['law'],
+  medicine: ['premed', 'wellness'],
 };
+
+const SECTION_ID_TO_LABEL: Record<string, StoredCategory> = SECTION_OPTIONS.reduce((acc, option) => {
+  acc[option.id] = option.label;
+  return acc;
+}, {} as Record<string, StoredCategory>);
+
+const STORED_CATEGORY_TO_SECTION_ID: Record<StoredCategory, string> = SECTION_OPTIONS.reduce((acc, option) => {
+  acc[option.label] = option.id;
+  return acc;
+}, {} as Record<StoredCategory, string>);
 
 function getInitialAcademicSelections(isMajorSpecific: boolean, selectedMajor: MajorOption) {
   if (!isMajorSpecific) {
@@ -172,28 +228,27 @@ function getInitialAcademicSelections(isMajorSpecific: boolean, selectedMajor: M
   return mapped ? [mapped] : [];
 }
 
-function getInitialEventSelections(categories: string[]) {
+function getInitialSectionSelections(categories: string[]) {
   const mapped = new Set<string>();
   categories.forEach((category) => {
-    const eventId = STORED_CATEGORY_TO_EVENT[category as StoredCategory];
-    if (eventId) {
-      mapped.add(eventId);
+    const sectionId = STORED_CATEGORY_TO_SECTION_ID[category as StoredCategory];
+    if (sectionId) {
+      mapped.add(sectionId);
     }
   });
   return Array.from(mapped);
 }
 
-function buildStoredCategories(eventIds: string[]) {
+function buildStoredCategories(sectionIds: string[]) {
   const next: StoredCategory[] = [];
   const seen = new Set<StoredCategory>();
 
-  eventIds.forEach((eventId) => {
-    (EVENT_TO_STORED_CATEGORY[eventId] || []).forEach((category) => {
-      if (!seen.has(category)) {
-        seen.add(category);
-        next.push(category);
-      }
-    });
+  sectionIds.forEach((sectionId) => {
+    const category = SECTION_ID_TO_LABEL[sectionId];
+    if (category && !seen.has(category)) {
+      seen.add(category);
+      next.push(category);
+    }
   });
 
   return next;
@@ -228,7 +283,15 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
   const [selections, setSelections] = useState({
     interests: preferredEventInterests,
     academics: getInitialAcademicSelections(isMajorSpecific, selectedMajor),
-    events: getInitialEventSelections(preferredEventCategories),
+    sections: getInitialSectionSelections(preferredEventCategories),
+    focus: [] as string[],
+  });
+  const [preferenceAnswers, setPreferenceAnswers] = useState({
+    indoorOutdoor: 'either',
+    weekdayWeekend: 'either',
+    dayNight: 'either',
+    freePaid: 'either',
+    notificationFrequency: 'medium',
   });
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -273,6 +336,27 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
     });
   };
 
+  const setPreferenceAnswer = (key: keyof typeof preferenceAnswers, value: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    setPreferenceAnswers((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const derivedInterestTags = useMemo(() => {
+    const tags = new Set<string>();
+    selections.interests.forEach((id) => {
+      (INTEREST_ID_TO_TAGS[id] || []).forEach((tag) => tags.add(tag));
+    });
+    selections.academics.forEach((id) => {
+      (ACADEMIC_ID_TO_TAGS[id] || []).forEach((tag) => tags.add(tag));
+    });
+    if (selections.focus.includes('food-centered')) tags.add('free_food');
+    if (selections.focus.includes('wellness-fitness')) tags.add('wellness');
+    if (selections.focus.includes('social-community')) tags.add('community');
+    if (selections.focus.includes('entertainment-arts')) tags.add('music');
+    if (selections.focus.includes('advocacy-service')) tags.add('volunteering');
+    return Array.from(tags);
+  }, [selections.academics, selections.focus, selections.interests]);
+
   const handleFinish = async () => {
     if (isSavingRef.current) {
       return;
@@ -280,13 +364,34 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     isSavingRef.current = true;
-    const storedCategories = buildStoredCategories(selections.events);
+    const storedCategories = buildStoredCategories(selections.sections);
     const major = getPrimaryMajor(selections.academics);
+    const preferredTime = preferenceAnswers.dayNight === 'night'
+      ? 'Evening'
+      : preferenceAnswers.dayNight === 'day'
+        ? 'Afternoon'
+        : 'Anytime';
+    const preferredSocialMode = selections.focus.includes('social-community') ? 'casual' : null;
+    const onboardingAnswers = {
+      preferred_sections: storedCategories,
+      academic_interests: selections.academics,
+      indoor_vs_outdoor: preferenceAnswers.indoorOutdoor,
+      weekday_vs_weekend: preferenceAnswers.weekdayWeekend,
+      day_vs_night: preferenceAnswers.dayNight,
+      free_vs_paid: preferenceAnswers.freePaid,
+      food_centered_interest: selections.focus.includes('food-centered'),
+      wellness_fitness_interest: selections.focus.includes('wellness-fitness'),
+      social_community_interest: selections.focus.includes('social-community'),
+      entertainment_music_art_interest: selections.focus.includes('entertainment-arts'),
+      advocacy_service_civic_interest: selections.focus.includes('advocacy-service'),
+      notification_frequency: preferenceAnswers.notificationFrequency,
+      interest_tags: derivedInterestTags,
+    };
 
     setPreferredEventCategories(storedCategories);
     setPreferredEventInterests(selections.interests);
-    setPreferredTime(null);
-    setPreferredSocialMode(null);
+    setPreferredTime(preferredTime);
+    setPreferredSocialMode(preferredSocialMode);
 
     if (major) {
       setSelectedMajor(major);
@@ -300,9 +405,13 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
     try {
       await updateUserProfile(clerkId, {
         preferred_event_categories: storedCategories,
-        preferred_time: '',
-        preferred_social_mode: '',
+        preferred_event_interests: selections.interests,
+        preferred_time: preferredTime,
+        preferred_social_mode: preferredSocialMode ?? '',
+        notification_frequency: preferenceAnswers.notificationFrequency,
+        onboarding_answers: onboardingAnswers,
         major: major ?? '',
+        avoid_friday: preferenceAnswers.weekdayWeekend === 'weekend',
         event_preferences_completed: true,
       });
     } catch (error) {
@@ -313,7 +422,7 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
   const renderContent = () => {
     switch (step) {
       case 0:
-        return <IntroScreen onNext={() => transitionTo(1)} onSkip={() => transitionTo(4)} />;
+        return <IntroScreen onNext={() => transitionTo(1)} onSkip={() => transitionTo(6)} />;
       case 1:
         return (
           <SelectionView
@@ -343,16 +452,37 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
       case 3:
         return (
           <TagSelectionView
-            title="What events do you actually want to see?"
-            data={EVENTS}
-            selected={selections.events}
-            onToggle={(id: string) => toggleSelection('events', id)}
+            title="Pick your favorite event sections"
+            data={SECTION_OPTIONS}
+            selected={selections.sections}
+            onToggle={(id: string) => toggleSelection('sections', id)}
             onNext={() => transitionTo(4)}
             onBack={() => transitionTo(2)}
             onSkip={() => transitionTo(4)}
           />
         );
       case 4:
+        return (
+          <TagSelectionView
+            title="Any focus areas?"
+            data={FOCUS_AREAS}
+            selected={selections.focus}
+            onToggle={(id: string) => toggleSelection('focus', id)}
+            onNext={() => transitionTo(5)}
+            onBack={() => transitionTo(3)}
+            onSkip={() => transitionTo(5)}
+          />
+        );
+      case 5:
+        return (
+          <PreferenceSurveyView
+            selections={preferenceAnswers}
+            onChange={setPreferenceAnswer}
+            onBack={() => transitionTo(4)}
+            onNext={() => transitionTo(6)}
+          />
+        );
+      case 6:
         return <SuccessScreen onEdit={() => transitionTo(1)} onFinish={handleFinish} />;
       default:
         return null;
@@ -497,6 +627,72 @@ function TagSelectionView({
           disabled={selected.length === 0}
         >
           <Text style={styles.btnPrimaryText}>Continue to Campus</Text>
+          <ArrowRight size={20} color={COLORS.white} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function PreferenceSurveyView({
+  selections,
+  onChange,
+  onBack,
+  onNext,
+}: {
+  selections: {
+    indoorOutdoor: string;
+    weekdayWeekend: string;
+    dayNight: string;
+    freePaid: string;
+    notificationFrequency: string;
+  };
+  onChange: (key: 'indoorOutdoor' | 'weekdayWeekend' | 'dayNight' | 'freePaid' | 'notificationFrequency', value: string) => void;
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  const renderOptionRow = (
+    label: string,
+    key: 'indoorOutdoor' | 'weekdayWeekend' | 'dayNight' | 'freePaid' | 'notificationFrequency',
+    options: Array<{ id: string; label: string; icon: React.ComponentType<any> }>,
+  ) => (
+    <View style={styles.preferenceRow} key={key}>
+      <Text style={styles.preferenceTitle}>{label}</Text>
+      <View style={styles.preferenceOptions}>
+        {options.map((option) => {
+          const selected = selections[key] === option.id;
+          return (
+            <TouchableOpacity
+              key={option.id}
+              style={[styles.preferenceChip, selected && styles.preferenceChipSelected]}
+              onPress={() => onChange(key, option.id)}
+            >
+              <option.icon size={16} color={selected ? COLORS.white : COLORS.maroon800} />
+              <Text style={[styles.preferenceChipText, selected && styles.preferenceChipTextSelected]}>
+                {option.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={styles.flex1}>
+      <Header onBack={onBack} onSkip={onNext} />
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <Text style={styles.h2}>Plan Your Event Style</Text>
+        <Text style={styles.subtitle}>Quick choices help us tune For U and notifications.</Text>
+        {renderOptionRow('Indoor or Outdoor?', 'indoorOutdoor', INDOOR_OUTDOOR_OPTIONS)}
+        {renderOptionRow('Weekdays or Weekends?', 'weekdayWeekend', WEEKDAY_WEEKEND_OPTIONS)}
+        {renderOptionRow('Day or Night?', 'dayNight', DAY_NIGHT_OPTIONS)}
+        {renderOptionRow('Free or Paid?', 'freePaid', FREE_PAID_OPTIONS)}
+        {renderOptionRow('Notification Frequency', 'notificationFrequency', NOTIFICATION_FREQUENCY_OPTIONS)}
+      </ScrollView>
+      <View style={styles.bottomActions}>
+        <TouchableOpacity style={styles.btnPrimary} onPress={onNext}>
+          <Text style={styles.btnPrimaryText}>Continue</Text>
           <ArrowRight size={20} color={COLORS.white} />
         </TouchableOpacity>
       </View>
@@ -805,6 +1001,43 @@ const styles = StyleSheet.create({
   tagSelected: { backgroundColor: COLORS.maroon800, borderColor: COLORS.maroon800 },
   tagLabel: { fontSize: 14, fontWeight: '600', color: COLORS.maroon950 },
   tagLabelSelected: { color: COLORS.white },
+  preferenceRow: {
+    marginBottom: 20,
+  },
+  preferenceTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.maroon950,
+    marginBottom: 10,
+  },
+  preferenceOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  preferenceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: 'rgba(80,0,0,0.08)',
+  },
+  preferenceChipSelected: {
+    backgroundColor: COLORS.maroon800,
+    borderColor: COLORS.maroon800,
+  },
+  preferenceChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.maroon950,
+  },
+  preferenceChipTextSelected: {
+    color: COLORS.white,
+  },
 
   footer: {
     position: 'absolute',

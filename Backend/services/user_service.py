@@ -3,8 +3,10 @@ from __future__ import annotations
 Business-logic layer for user operations (profile + schedules).
 """
 import uuid
-from typing import List, Optional
+import os
+from typing import Any, Dict, List, Optional
 from repositories import user_repository
+from services import user_preference_profile_service
 
 
 # ---------------------------------------------------------------------------
@@ -21,11 +23,58 @@ def sync_user(clerk_id: str, email: str = None, full_name: str = None, profile_i
 # ---------------------------------------------------------------------------
 
 def get_profile(clerk_id: str) -> dict | None:
-    return user_repository.get_user(clerk_id)
+    profile = user_repository.get_user(clerk_id)
+    if not profile:
+        return None
+    profile["user_preference_profile"] = user_repository.get_user_preference_profile(clerk_id)
+    return profile
 
 
 def update_profile(clerk_id: str, fields: dict) -> dict | None:
-    return user_repository.update_profile(clerk_id, fields)
+    updates = dict(fields or {})
+    preference_keys = {
+        "preferred_event_categories",
+        "preferred_event_interests",
+        "preferred_time",
+        "preferred_social_mode",
+        "notification_frequency",
+        "onboarding_answers",
+        "event_preferences_completed",
+        "avoid_friday",
+    }
+    onboarding_related_update = any(key in updates for key in preference_keys)
+
+    if onboarding_related_update and "onboarding_answers" not in updates:
+        synthesized_answers: Dict[str, Any] = {}
+        if "preferred_event_categories" in updates:
+            synthesized_answers["preferred_sections"] = updates.get("preferred_event_categories") or []
+        if "preferred_event_interests" in updates:
+            synthesized_answers["interest_tags"] = updates.get("preferred_event_interests") or []
+        if "preferred_time" in updates and updates.get("preferred_time"):
+            synthesized_answers["day_vs_night"] = updates.get("preferred_time")
+        if "notification_frequency" in updates and updates.get("notification_frequency"):
+            synthesized_answers["notification_frequency"] = updates.get("notification_frequency")
+        if synthesized_answers:
+            updates["onboarding_answers"] = synthesized_answers
+
+    updated = user_repository.update_profile(clerk_id, updates)
+    if not updated:
+        return None
+
+    should_generate_profile = onboarding_related_update and bool(updated.get("event_preferences_completed"))
+    if should_generate_profile:
+        onboarding_answers = updated.get("onboarding_answers") or {}
+        generated = user_preference_profile_service.generate_user_preference_profile(
+            onboarding_answers=onboarding_answers,
+            interaction_history=None,
+            allow_llm=os.getenv("USER_PROFILE_ALLOW_LLM", "").strip().lower() in {"1", "true", "yes"},
+        )
+        user_repository.upsert_user_preference_profile(clerk_id, generated)
+        updated["user_preference_profile"] = generated
+    else:
+        updated["user_preference_profile"] = user_repository.get_user_preference_profile(clerk_id)
+
+    return updated
 
 
 def accept_tos(clerk_id: str) -> None:

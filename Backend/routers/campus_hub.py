@@ -127,6 +127,28 @@ def get_events(
     )
 
 
+@router.get("/events/recommended")
+@limiter.limit("100/minute")
+def get_recommended_events(
+    request: Request,
+    clerk_id: Optional[str] = Query(None),
+    limit: int = Query(80, ge=1, le=500),
+    campus: str = Query("tamu"),
+    refresh: bool = Query(False),
+    auth_user_id: Optional[str] = Depends(optional_auth),
+) -> Dict[str, Any]:
+    if clerk_id is not None and auth_user_id is None:
+        clerk_id = None
+    if clerk_id is not None:
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only request recommendations for your own account")
+    return campus_hub_service.get_recommended_events(
+        clerk_id=clerk_id,
+        limit=limit,
+        campus=campus,
+        force_refresh=refresh,
+    )
+
+
 @router.get("/places/registry")
 @limiter.limit("60/minute")
 def get_places_registry(request: Request):
