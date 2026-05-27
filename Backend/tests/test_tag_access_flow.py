@@ -203,8 +203,7 @@ class CampusEventAccessTests(unittest.TestCase):
         ]
         mock_load_events.return_value = {"source_status": "live", "events": []}
 
-        with mock.patch.object(campus_hub_service, "_safe_decrypt", side_effect=lambda value: value):
-            result = campus_hub_service.get_events_snapshot(clerk_id="user_1", limit=20, student_relevant_only=False)
+        result = campus_hub_service.get_events_snapshot(clerk_id="user_1", limit=20, student_relevant_only=False)
 
         event_ids = [event["event_id"] for event in result["events"]]
         self.assertEqual(event_ids, [])

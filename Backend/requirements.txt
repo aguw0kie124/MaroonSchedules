@@ -13,7 +13,6 @@ pydantic-settings
 typing-extensions
 redis
 PyJWT==2.10.1
-cryptography>=42,<45
 slowapi
 bleach
 psycopg-pool
