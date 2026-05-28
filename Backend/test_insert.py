@@ -1,7 +1,6 @@
 import psycopg
 from db_config import CONNECTION_PARAMS
 import json
-from services import encryption_service
 
 def test_insert():
     try:
@@ -28,10 +27,10 @@ def test_insert():
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                     """,
                     (
-                        user_id, "Test Runner", "", 
-                        encryption_service.encrypt_string(content), 
-                        lat, lng, location_tag, "ping", 
-                        json.dumps({"_enc": encryption_service.encrypt_json(custom_data)})
+                        user_id, "Test Runner", "",
+                        content,
+                        lat, lng, location_tag, "ping",
+                        json.dumps(custom_data)
                     )
                 )
                 conn.commit()

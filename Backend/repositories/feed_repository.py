@@ -3,18 +3,7 @@ import psycopg
 from db_config import CONNECTION_PARAMS
 from typing import List, Dict, Any, Optional
 import uuid
-from services import cache_service, encryption_service
-
-def _safe_decrypt_json(data: Any) -> Dict[str, Any]:
-    if isinstance(data, dict) and "_enc" in data:
-        return encryption_service.decrypt_json(data["_enc"])
-    if isinstance(data, str) and data.startswith("{"):
-        # Legacy fallback
-        try:
-            return json.loads(data)
-        except Exception:
-            pass
-    return data if isinstance(data, dict) else {}
+from services import cache_service
 
 def _row_to_review_dict(row) -> Dict[str, Any]:
     if not row: return {}
@@ -47,6 +36,9 @@ def _try_decrypt(value: Optional[str]) -> str:
 
 def _row_to_post_dict(row) -> Dict[str, Any]:
     if not row: return {}
+    custom_data = row[13]
+    if not isinstance(custom_data, dict):
+        custom_data = {}
     return {
         "id": str(row[0]),
         "user_id": row[1],
@@ -61,7 +53,7 @@ def _row_to_post_dict(row) -> Dict[str, Any]:
         "is_anonymous": row[10],
         "visibility": row[11],
         "post_type": row[12],
-        "custom_data": _safe_decrypt_json(row[13]),
+        "custom_data": custom_data,
         "created_at": str(row[14])
     }
 
@@ -73,7 +65,7 @@ def _row_to_interaction_dict(row) -> Dict[str, Any]:
         "post_type": row[2],
         "user_id": row[3],
         "interaction_type": row[4],
-        "comment_text": encryption_service.decrypt_string(row[5]) if row[5] else None,
+        "comment_text": row[5],
         "created_at": str(row[6]),
         "user_name": row[7],
         "user_image": row[8],
@@ -101,7 +93,7 @@ def add_place_review(
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id, place_id, user_id, user_name, user_image, rating, title, body, images, created_at, updated_at, is_anonymous
                 """,
-                (place_id, user_id, user_name, user_image, rating, encryption_service.encrypt_string(title), encryption_service.encrypt_string(body), images or [], is_anonymous)
+                (place_id, user_id, user_name, user_image, rating, title, body, images or [], is_anonymous)
             )
             row = cur.fetchone()
         conn.commit()
@@ -157,7 +149,7 @@ def add_crowdping_post(
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 RETURNING id, user_id, user_name, user_image, content, lat, lng, location_tag, event_id, images, is_anonymous, visibility, post_type, custom_data, created_at
                 """,
-                (user_id, user_name, user_image, encryption_service.encrypt_string(content), lat, lng, location_tag, event_id, images or [], is_anonymous, visibility, post_type, json.dumps({"_enc": encryption_service.encrypt_json(custom_data or {})}))
+                (user_id, user_name, user_image, content, lat, lng, location_tag, event_id, images or [], is_anonymous, visibility, post_type, json.dumps(custom_data or {}))
             )
             row = cur.fetchone()
         conn.commit()
@@ -279,7 +271,7 @@ def add_post_interaction(
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id, post_id, post_type, user_id, type, comment_text, created_at, user_name, user_image, parent_id
                 """,
-                (post_id, post_type, user_id, interaction_type, encryption_service.encrypt_string(comment_text) if comment_text else None, user_name, user_image, parent_id)
+                (post_id, post_type, user_id, interaction_type, comment_text if comment_text else None, user_name, user_image, parent_id)
             )
             row = cur.fetchone()
         conn.commit()
