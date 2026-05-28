@@ -8,7 +8,7 @@ def get_app_version_config() -> Dict[str, Dict[str, str]]:
     Returns:
         {
             "ios": {
-                "latestVersion": "1.0.0",
+                "latestVersion": "2.0.0",
                 "minimumSupportedVersion": "1.0.0",
                 "storeUrl": "..."
             },
