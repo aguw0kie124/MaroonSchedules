@@ -25,13 +25,25 @@ def _row_to_review_dict(row) -> Dict[str, Any]:
         "user_name": row[3],
         "user_image": row[4],
         "rating": row[5],
-        "title": encryption_service.decrypt_string(row[6]) if row[6] else "",
-        "body": encryption_service.decrypt_string(row[7]) if row[7] else "",
+        "title": _try_decrypt(row[6]),
+        "body": _try_decrypt(row[7]),
         "images": row[8] or [],
         "created_at": str(row[9]),
         "updated_at": str(row[10]),
         "is_anonymous": row[11]
     }
+
+def _try_decrypt(value: Optional[str]) -> str:
+    """Attempt AES-GCM decryption; if the key is wrong or value is plaintext, return raw."""
+    if not value:
+        return ""
+    try:
+        decrypted = encryption_service.decrypt_string(value)
+        # decrypt_string returns the original string on failure - that's fine for plaintext
+        return decrypted
+    except Exception:
+        return value
+
 
 def _row_to_post_dict(row) -> Dict[str, Any]:
     if not row: return {}
@@ -40,7 +52,7 @@ def _row_to_post_dict(row) -> Dict[str, Any]:
         "user_id": row[1],
         "user_name": row[2],
         "user_image": row[3],
-        "content": encryption_service.decrypt_string(row[4]) if row[4] else "",
+        "content": _try_decrypt(row[4]),
         "lat": row[5],
         "lng": row[6],
         "location_tag": row[7],

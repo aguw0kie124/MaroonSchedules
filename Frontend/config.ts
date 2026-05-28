@@ -37,43 +37,51 @@ function getMetroHost(): string | null {
 function resolveApiUrl() {
     const configuredUrl = (process.env.EXPO_PUBLIC_API_URL || '').trim();
 
-    if (!__DEV__) {
-        return configuredUrl || DEFAULT_LOCAL_API_URL;
-    }
-
-    const useRemoteApiInDev = process.env.EXPO_PUBLIC_USE_REMOTE_API_IN_DEV === 'true';
-    let fallbackUrl = configuredUrl || DEFAULT_LOCAL_API_URL;
-
-    if (configuredUrl && !useRemoteApiInDev) {
-        try {
-            const configuredHost = new URL(configuredUrl).hostname;
-            if (!LOOPBACK_HOSTS.has(configuredHost) && !isPrivateIpv4(configuredHost)) {
-                fallbackUrl = DEFAULT_LOCAL_API_URL;
-            }
-        } catch {
-            fallbackUrl = DEFAULT_LOCAL_API_URL;
+    // If no URL configured, fall back to platform default
+    if (!configuredUrl) {
+        if (!__DEV__) return DEFAULT_LOCAL_API_URL;
+        const metroHost = getMetroHost();
+        if (metroHost && !LOOPBACK_HOSTS.has(metroHost)) {
+            try {
+                const parsed = new URL(DEFAULT_LOCAL_API_URL);
+                parsed.hostname = metroHost;
+                return parsed.toString();
+            } catch { /* fall through */ }
         }
+        return DEFAULT_LOCAL_API_URL;
     }
+
+    // If the configured URL is a real remote domain (not localhost / LAN IP), always use it.
+    // This covers deployed backends like http://maroonlife.app regardless of __DEV__ mode.
+    try {
+        const configuredHost = new URL(configuredUrl).hostname;
+        if (!LOOPBACK_HOSTS.has(configuredHost) && !isPrivateIpv4(configuredHost)) {
+            return configuredUrl;
+        }
+    } catch {
+        return DEFAULT_LOCAL_API_URL;
+    }
+
+    // The configured URL is a local/LAN address.
+    // In production just use it as-is; in dev follow the Metro host so the
+    // phone and the dev server share the same LAN IP automatically.
+    if (!__DEV__) return configuredUrl;
 
     const metroHost = getMetroHost();
     if (!metroHost || LOOPBACK_HOSTS.has(metroHost)) {
-        return fallbackUrl;
+        return configuredUrl;
     }
 
     try {
-        const parsed = new URL(fallbackUrl);
+        const parsed = new URL(configuredUrl);
         const configuredHost = parsed.hostname;
-        const shouldFollowMetroHost =
-            LOOPBACK_HOSTS.has(configuredHost) || isPrivateIpv4(configuredHost);
-
-        if (!shouldFollowMetroHost || configuredHost === metroHost) {
-            return fallbackUrl;
+        if (LOOPBACK_HOSTS.has(configuredHost) || isPrivateIpv4(configuredHost)) {
+            parsed.hostname = metroHost;
+            return parsed.toString();
         }
-
-        parsed.hostname = metroHost;
-        return parsed.toString();
+        return configuredUrl;
     } catch {
-        return fallbackUrl;
+        return configuredUrl;
     }
 }
 
