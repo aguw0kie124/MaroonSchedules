@@ -6,7 +6,6 @@ import psycopg
 
 from db_config import CONNECTION_PARAMS, get_pool
 from services.tag_access_service import normalize_tag_list, normalize_tag_slug
-from services import encryption_service
 
 # ---------------------------------------------------------------------------
 # Schema init guard – run DDL exactly once per process
@@ -23,13 +22,6 @@ def _ensure_tag_schema_once(conn: psycopg.Connection) -> None:
         if not _tag_schema_initialized:
             _ensure_tag_schema(conn)
             _tag_schema_initialized = True
-
-def _safe_decrypt(value: Optional[str]) -> Optional[str]:
-    """Decrypt if it's an encrypted payload, otherwise return as is."""
-    if not value or not isinstance(value, str):
-        return value
-    return encryption_service.decrypt_string(value)
-
 
 def _ensure_tag_schema(conn: psycopg.Connection) -> None:
     with conn.cursor() as cur:
@@ -620,8 +612,6 @@ def search_users(query: Optional[str] = None, limit: int = 50, conn: Optional[ps
             rows = cur.fetchall() or []
             for row in rows:
                 row["tags"] = row.get("tags") or []
-                row["email"] = _safe_decrypt(row.get("email"))
-                row["full_name"] = _safe_decrypt(row.get("full_name"))
             return rows
 
     if conn is not None:

@@ -8,7 +8,6 @@ import psycopg
 from psycopg.rows import dict_row
 from db_config import CONNECTION_PARAMS, get_pool
 from typing import Any, Dict, Optional, Tuple, Union
-from services import encryption_service
 
 # ---------------------------------------------------------------------------
 # Schema init guard – run DDL exactly once per process to avoid table-level
@@ -31,14 +30,6 @@ def _ensure_user_schema_once(conn: psycopg.Connection) -> None:
 # ---------------------------------------------------------------------------
 # User CRUD
 # ---------------------------------------------------------------------------
-
-def _safe_decrypt(value: Optional[str]) -> Optional[str]:
-    """Decrypt if it's an encrypted payload, otherwise return as is."""
-    if not value or not isinstance(value, str):
-        return value
-    # encryption_service.decrypt_string handling already has some safety, 
-    # but we force it here to be explicit about expected payloads.
-    return encryption_service.decrypt_string(value)
 
 def _execute_optional_ddl(conn: psycopg.Connection, sql: str) -> None:
     try:
@@ -250,10 +241,10 @@ def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile
         insert_values = [clerk_id]
         if "email" in columns:
             insert_columns.append("email")
-            insert_values.append(encryption_service.encrypt_string(email) if email else None)
+            insert_values.append(email or None)
         if "full_name" in columns:
             insert_columns.append("full_name")
-            insert_values.append(encryption_service.encrypt_string(full_name) if full_name else None)
+            insert_values.append(full_name or None)
         if "username" in columns:
             insert_columns.append("username")
             insert_values.append(username or None)
@@ -340,10 +331,7 @@ def update_profile(clerk_id: str, fields: dict) -> Optional[dict]:
         updates = {}
         for k, v in fields.items():
             if k in allowed and k in existing:
-                if k in ["email", "full_name"] and v:
-                    updates[k] = encryption_service.encrypt_string(v)
-                else:
-                    updates[k] = v
+                updates[k] = v
 
         if not updates:
             return get_user(clerk_id)
@@ -791,8 +779,8 @@ def search_users(searcher_id: str, query: str, limit: int = 30) -> list[dict]:
         if not clerk_id or clerk_id in blocked_ids:
             continue
 
-        full_name = _safe_decrypt(row.get("full_name")) or ""
-        raw_email = _safe_decrypt(row.get("email")) or ""
+        full_name = row.get("full_name") or ""
+        raw_email = row.get("email") or ""
         # Use only the local-part of the email (before @) for display-safe matching
         email_local = raw_email.split("@")[0] if "@" in raw_email else raw_email
         username = row.get("username") or ""
@@ -858,8 +846,8 @@ def _row_to_dict(row) -> dict:
         return {
             "id": row.get("id"),
             "clerk_id": row.get("clerk_id"),
-            "email": _safe_decrypt(row.get("email")),
-            "full_name": _safe_decrypt(row.get("full_name")),
+            "email": row.get("email"),
+            "full_name": row.get("full_name"),
             "username": row.get("username"),
             "profile_image_url": row.get("profile_image_url"),
             "major": row.get("major"),
@@ -877,8 +865,8 @@ def _row_to_dict(row) -> dict:
             "schedules": schedules or [],
             "created_at": str(row.get("created_at")) if row.get("created_at") else None,
             "updated_at": str(row.get("updated_at")) if row.get("updated_at") else None,
-            "canvas_access_token": _safe_decrypt(row.get("canvas_access_token")),
-            "canvas_refresh_token": _safe_decrypt(row.get("canvas_refresh_token")),
+            "canvas_access_token": row.get("canvas_access_token"),
+            "canvas_refresh_token": row.get("canvas_refresh_token"),
             "canvas_expires_at": str(row.get("canvas_expires_at")) if row.get("canvas_expires_at") else None,
             "canvas_instance_url": row.get("canvas_instance_url"),
             "tos_accepted": row.get("tos_accepted", False),
@@ -1040,8 +1028,8 @@ def save_canvas_tokens(clerk_id: str, access_token: str, refresh_token: str, exp
                 WHERE clerk_id = %s
                 """,
                 (
-                    encryption_service.encrypt_string(access_token),
-                    encryption_service.encrypt_string(refresh_token),
+                    access_token,
+                    refresh_token,
                     expires_at,
                     instance_url,
                     clerk_id,

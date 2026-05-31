@@ -31,7 +31,7 @@ def migrate_app_version():
                     INSERT INTO app_version_config 
                     (platform, latest_version, minimum_supported_version, store_url)
                     VALUES 
-                    ('ios', '1.0.0', '1.0.0', 'https://apps.apple.com/app/id6761646764')
+                    ('ios', '2.0.0', '1.0.0', 'https://apps.apple.com/app/id6761646764')
                     ON CONFLICT (platform) DO UPDATE SET
                         latest_version = EXCLUDED.latest_version,
                         minimum_supported_version = EXCLUDED.minimum_supported_version,
@@ -45,7 +45,7 @@ def migrate_app_version():
                     INSERT INTO app_version_config 
                     (platform, latest_version, minimum_supported_version, store_url)
                     VALUES 
-                    ('android', '1.0.0', '1.0.0', '')
+                    ('android', '2.0.0', '1.0.0', '')
                     ON CONFLICT (platform) DO UPDATE SET
                         latest_version = EXCLUDED.latest_version,
                         minimum_supported_version = EXCLUDED.minimum_supported_version,

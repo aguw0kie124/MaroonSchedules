@@ -21,7 +21,6 @@ from services import (
     campus_places_service,
     local_business_events_service,
     tag_access_service,
-    encryption_service,
     parking_realtime_service,
     recommendation_engine,
     notification_recommendation_service,
@@ -400,15 +399,6 @@ def _parse_event_datetime(value: Any) -> Optional[datetime]:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed
-
-
-def _safe_decrypt(value: Any) -> Optional[str]:
-    if not value:
-        return None
-    try:
-        return encryption_service.decrypt_string(value)
-    except Exception:
-        return str(value)
 
 
 def _is_event_upcoming(event: Dict[str, Any], now: Optional[datetime] = None) -> bool:
@@ -1514,11 +1504,11 @@ def get_events_snapshot(
             continue
 
         try:
-            organization_name = _safe_decrypt(ad_ev.get("organization_name")) or "Campus organizer"
-            title = _safe_decrypt(ad_ev["title"])
-            description = _safe_decrypt(ad_ev["description"]) or ""
+            organization_name = ad_ev.get("organization_name") or "Campus organizer"
+            title = ad_ev["title"]
+            description = ad_ev["description"] or ""
             tags = ad_ev.get("access_tags") or []
-            location_name = _safe_decrypt(ad_ev["location_name"]) or "Campus"
+            location_name = ad_ev["location_name"] or "Campus"
             
             admin_events_list.append({
                 "event_id": str(ad_ev["id"]),
