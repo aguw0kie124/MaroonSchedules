@@ -33,6 +33,7 @@ import TransitTripPlannerScreen from './components/TransitTripPlannerScreen';
 import { TransitTripResultsScreen } from './components/TransitTripResultsScreen';
 import { PlacesMapScreen } from './components/PlacesMapScreen';
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
+import { AssistantScreen } from './components/AssistantScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 import { SocialHubScreen } from './components/SocialHubScreen';
@@ -54,7 +55,7 @@ import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 import RestaurantMenuScreen from './components/dining/RestaurantMenuScreen';
 
-import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio, UserRound, LayoutGrid, RotateCw, LibraryBig, BarChart2 } from 'lucide-react-native';
+import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio, UserRound, LayoutGrid, RotateCw, LibraryBig, BarChart2, Bot } from 'lucide-react-native';
 import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
@@ -309,6 +310,7 @@ function withTabMotion(Component: React.ComponentType<any>, delay = 0) {
 
 const AnimatedDashboardScreen = withTabMotion(Dashboard, 0);
 const AnimatedPlacesScreen = withTabMotion(PlacesMapScreen, 40);
+const AnimatedAssistantScreen = withTabMotion(AssistantScreen, 20);
 const AnimatedSocialScreen = withTabMotion(SocialHubScreen, 10);
 const AnimatedDiningScreen = withTabMotion(DiningDashboard, 30);
 const AnimatedClubsScreen = withTabMotion(ClubAccessScreen, 50);
@@ -375,6 +377,14 @@ function MainTabs(props: any) {
           component: AnimatedPlacesScreen,
           title: 'Places',
           icon: Map,
+        };
+      }
+      if (item.id === 'RevAI') {
+        return {
+          name: 'RevAI',
+          component: AnimatedAssistantScreen,
+          title: 'RevAI',
+          icon: Bot,
         };
       }
       if (item.id === 'Social') {

@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-export type NavItemId = 'Dashboard' | 'Places' | 'Social' | 'Dining' | 'Grades';
+export type NavItemId = 'Dashboard' | 'Places' | 'RevAI' | 'Social' | 'Dining' | 'Grades';
 export type PlacesPillId =
   | 'Pulse'
   | 'Today'
@@ -37,9 +37,10 @@ export const PARKING_PERMIT_OPTIONS: Array<{ id: ParkingPermit; label: string; d
 export const DEFAULT_NAV_ITEMS: ToggleLayoutItem<NavItemId>[] = [
   { id: 'Dashboard', label: 'Events', visible: true, order: 0 },
   { id: 'Places', label: 'Places', visible: true, order: 1 },
-  { id: 'Social', label: 'Social', visible: true, order: 2 },
-  { id: 'Grades', label: 'Grades', visible: true, order: 3 },
-  { id: 'Dining', label: 'Dining', visible: false, order: 4 },
+  { id: 'RevAI', label: 'RevAI', visible: true, order: 2 },
+  { id: 'Social', label: 'Social', visible: true, order: 3 },
+  { id: 'Grades', label: 'Grades', visible: true, order: 4 },
+  { id: 'Dining', label: 'Dining', visible: false, order: 5 },
 ];
 
 export const DEFAULT_PLACES_PILLS: ToggleLayoutItem<PlacesPillId>[] = [

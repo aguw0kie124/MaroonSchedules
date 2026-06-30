@@ -30,6 +30,7 @@ from routers.traffic import router as traffic_router
 from routers.updates import router as updates_router
 from routers.upload import UPLOAD_DIR
 from routers.upload import router as upload_router
+from routers.ai import router as ai_router
 from services import cache_service, course_service, schedule_service, snapshot_jobs, user_service, campus_hub_service
 
 # Same source of truth as Expo: repo-root .env, then optional Backend/.env for local-only keys.
@@ -105,6 +106,7 @@ protected_router.include_router(dining_router)
 protected_router.include_router(grades_router)
 protected_router.include_router(upload_router)
 protected_router.include_router(admin_router)
+protected_router.include_router(ai_router)
 
 public_router.include_router(public_dining_router)
 public_router.include_router(updates_router)

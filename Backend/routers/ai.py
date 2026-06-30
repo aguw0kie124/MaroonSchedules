@@ -10,6 +10,27 @@ import tempfile
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
+
+class AssistantRequest(BaseModel):
+    message: str
+
+
+@router.post("/assistant")
+def assistant(body: AssistantRequest, auth_user_id: str = Depends(require_auth)):
+    """RevAI campus assistant — routes the question to campus data, then answers.
+
+    Sync def so FastAPI runs the (blocking) LLM calls in its threadpool.
+    Returns {"text", "card"?, "courses"?} for the RevAI chat screen.
+    """
+    from services import assistant_service
+
+    try:
+        return assistant_service.answer_question(body.message)
+    except Exception as exc:  # noqa: BLE001 - never 500 the chat UI
+        print(f"Assistant error: {exc}")
+        return {"text": "Sorry — I couldn't process that just now. Please try again in a moment."}
+
+
 class VoiceIntentRequest(BaseModel):
     text: str # For now, we'll send pre-transcribed text if possible, or we might need audio processing
     # If sending audio, we'll need a different approach (e.g. UploadFile)
