@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Depends
 from typing import Dict, Any, List
 from auth.clerk_middleware import require_auth
-from services import openai_service
 from pydantic import BaseModel
+# NOTE: `openai_service` (and the `openai` package) is imported lazily inside the
+# voice endpoints below so the rest of the AI router — including RevAI's
+# /ai/assistant, which uses OpenRouter, not OpenAI — works without that dependency.
 import shutil
 import os
 import json
@@ -52,7 +54,9 @@ async def extract_voice_intent(body: VoiceIntentRequest, auth_user_id: str = Dep
     Respond ONLY with valid JSON:
     {"intent_type": "BUILDING|NEAREST|SEARCH|UNKNOWN", "building_id": "string if BUILDING", "category": "string if NEAREST", "query": "string if SEARCH"}
     """
-    
+
+    from services import openai_service
+
     response = openai_service.ask_gpt5(body.text, system_prompt)
     
     try:
@@ -68,6 +72,8 @@ async def process_voice(file: UploadFile = File(...), auth_user_id: str = Depend
     """
     Handle audio file, transcribe with Whisper, and extract intent with GPT-5.
     """
+    from services import openai_service
+
     client = openai_service.get_client()
     
     # 1. Save temp file for OpenAI
