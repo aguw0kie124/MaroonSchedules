@@ -20,7 +20,8 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from services import course_service, llm_client
+from repositories import course_repository
+from services import llm_client
 
 logger = logging.getLogger("backend.assistant")
 
@@ -86,71 +87,93 @@ def _gpa_from_distribution(dist: Optional[Dict[str, Any]]) -> Optional[float]:
 
 
 def _find_course(code: str) -> Optional[dict]:
-    """Match a course by normalized id or code (exact id first, then scan)."""
+    """Match a course by normalized id or code from the in-memory catalog.
+
+    The catalog carries course-level facts (avg GPA, difficulty, credits,
+    prerequisites). Per-professor grade data comes separately from the grades
+    source. Deliberately does NOT call get_course_details, which additionally
+    fetches sections we don't need (slow, and can block when the DB is down).
+    """
     if not code:
         return None
     normalized = _normalize_code(code)
 
-    course = course_service.get_course_details(normalized)
-    if course:
-        return course
-
-    from repositories import course_repository
-
     for candidate in course_repository.get_all_courses():
         cand_id = _normalize_code(str(candidate.get("id", "")))
         cand_code = _normalize_code(str(candidate.get("code", "")))
-        if normalized in (cand_id, cand_code):
-            return course_service.get_course_details(str(candidate.get("id"))) or candidate
+        if normalized and normalized in (cand_id, cand_code):
+            return candidate
     return None
 
 
-def _build_course_payload(code: str) -> Dict[str, Any]:
-    """Fetch a course and build (data_for_llm, structured_courses_list)."""
-    course = _find_course(code)
-    if not course:
-        return {"data": None, "courses": None}
+def _subject_number(code: str) -> tuple[Optional[str], Optional[str]]:
+    """'CSCE 221' -> ('CSCE', '221')."""
+    match = re.match(r"\s*([A-Za-z]{2,4})\s*0*(\d{2,4}[A-Za-z]?)", code or "")
+    if match:
+        return match.group(1).upper(), match.group(2)
+    return None, None
 
-    display_code = str(course.get("code") or code)
-    number = _course_number(display_code)
+
+def _professors_from_grades(subject: str, number: str) -> List[dict]:
+    """Aggregate per-instructor grade rows into ranked profs (best GPA first)."""
+    try:
+        from routers.grades import _load_or_fetch
+
+        rows = _load_or_fetch(subject, number)
+    except Exception as exc:  # noqa: BLE001 - grades are best-effort
+        logger.warning("grades lookup failed for %s %s: %s", subject, number, exc)
+        return []
+
+    totals: Dict[str, Dict[str, float]] = {}
+    for row in rows or []:
+        name = str(row.get("instructor") or "").strip()
+        if not name or name.upper() in ("STAFF", "TBA"):
+            continue
+        bucket = totals.setdefault(name, {"A": 0, "B": 0, "C": 0, "D": 0, "F": 0, "sections": 0})
+        bucket["A"] += row.get("a_count", 0) or 0
+        bucket["B"] += row.get("b_count", 0) or 0
+        bucket["C"] += row.get("c_count", 0) or 0
+        bucket["D"] += row.get("d_count", 0) or 0
+        bucket["F"] += row.get("f_count", 0) or 0
+        bucket["sections"] += 1
 
     professors: List[dict] = []
-    for prof in course.get("professors") or []:
-        gpa = _gpa_from_distribution(prof.get("gradeDistribution"))
-        rating = prof.get("rating")
-        professors.append(
-            {
-                "name": prof.get("name"),
-                "rating": rating,
-                "totalReviews": prof.get("totalReviews"),
-                "gpa": gpa,
-            }
-        )
+    for name, bucket in totals.items():
+        gpa = _gpa_from_distribution(bucket)
+        if gpa is None:
+            continue
+        professors.append({"name": name, "gpa": gpa, "sections": int(bucket["sections"])})
 
-    # Best first: profs with a computed GPA, then by GPA, then by rating.
-    professors.sort(
-        key=lambda p: (p["gpa"] is not None, p["gpa"] or 0.0, p["rating"] or 0.0),
-        reverse=True,
-    )
-    top = professors[:4]
+    professors.sort(key=lambda p: p["gpa"], reverse=True)
+    return professors
 
-    courses_list = []
-    for prof in top:
-        if prof["gpa"] is not None:
-            meta = f"{prof['gpa']:.1f} GPA"
-        elif prof["rating"]:
-            meta = f"{prof['rating']}★"
-        else:
-            meta = ""
-        courses_list.append({"code": number, "name": prof["name"] or "Instructor", "meta": meta})
+
+def _build_course_payload(code: str) -> Dict[str, Any]:
+    """Build (data_for_llm, structured_courses_list) from catalog + grades."""
+    course = _find_course(code)
+
+    display_code = str((course.get("code") if course else None) or code)
+    subject, number = _subject_number(display_code)
+    if not subject:
+        subject, number = _subject_number(code)
+
+    top = _professors_from_grades(subject, number)[:4] if (subject and number) else []
+    badge = number or _course_number(display_code)
+
+    courses_list = [
+        {"code": badge, "name": prof["name"], "meta": f"{prof['gpa']:.2f} GPA"} for prof in top
+    ]
+
+    if not course and not top:
+        return {"data": None, "courses": None}
 
     data = {
         "code": display_code,
-        "name": course.get("name"),
-        "avgGPA": course.get("avgGPA") if course.get("avgGPA") not in (None, -1) else None,
-        "difficulty": course.get("difficulty"),
-        "credits": course.get("credits"),
-        "prerequisites": course.get("prerequisites"),
+        "name": course.get("name") if course else None,
+        "avgGPA": (course.get("avgGPA") if course and course.get("avgGPA") not in (None, -1) else None),
+        "difficulty": course.get("difficulty") if course else None,
+        "credits": course.get("credits") if course else None,
+        "prerequisites": course.get("prerequisites") if course else None,
         "professors": top,
     }
     return {"data": data, "courses": courses_list or None}

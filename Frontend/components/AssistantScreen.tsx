@@ -136,6 +136,7 @@ export function AssistantScreen() {
         const reply = await askAssistant(text);
         setMessages((prev) => [...prev, { id: nextId(), role: 'ai', reply }]);
       } catch (err) {
+        console.error('RevAI request failed:', err);
         setMessages((prev) => [
           ...prev,
           {
