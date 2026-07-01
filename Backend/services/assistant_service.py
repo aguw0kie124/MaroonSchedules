@@ -242,12 +242,20 @@ def _web_data(message: str) -> Optional[Dict[str, Any]]:
 def _answer_text(message: str, data: Any, models: List[str]) -> str:
     import json
 
+    from services import nvidia_client
+
     user_content = f"Question: {message}\n\nDATA:\n{json.dumps(data, default=str)}"
+    messages = [
+        {"role": "system", "content": ANSWER_SYSTEM},
+        {"role": "user", "content": user_content},
+    ]
+
+    # Prefer NVIDIA NIM when configured (reliable, no OpenRouter free-tier 429s).
+    if nvidia_client.is_configured():
+        return nvidia_client.chat(messages, temperature=0.3, max_tokens=800, timeout_seconds=25.0)
+
     result = llm_client.chat_completion(
-        [
-            {"role": "system", "content": ANSWER_SYSTEM},
-            {"role": "user", "content": user_content},
-        ],
+        messages,
         models,
         purpose="assistant_answer",
         timeout_seconds=22.0,
@@ -292,13 +300,17 @@ def answer_question(message: str) -> Dict[str, Any]:
 
     import os
 
+    from services import nvidia_client
+
     started = time.time()
     _log(f"Q={message!r}")
 
-    if not (os.getenv("OPENROUTER_API_KEY") or "").strip():
-        _log("no OPENROUTER_API_KEY set")
+    if not nvidia_client.is_configured() and not (os.getenv("OPENROUTER_API_KEY") or "").strip():
+        _log("no NVIDIA_API_KEY or OPENROUTER_API_KEY set")
         return dict(NO_KEY_FALLBACK)
 
+    provider = "nvidia" if nvidia_client.is_configured() else "openrouter"
+    _log(f"provider={provider} model={nvidia_client.get_model() if provider == 'nvidia' else 'openrouter'}")
     models = llm_client.get_assistant_models()
 
     route = _route(message)
