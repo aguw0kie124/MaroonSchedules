@@ -15,7 +15,7 @@ import json
 import logging
 import os
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -41,11 +41,13 @@ def _thinking_enabled() -> bool:
 def chat(
     messages: List[Dict[str, str]],
     *,
+    model: Optional[str] = None,
     temperature: float = 0.3,
     max_tokens: int = 800,
     timeout_seconds: float = 25.0,
 ) -> str:
-    """Return the assistant's reply text (reasoning stripped)."""
+    """Return the assistant's reply text (reasoning stripped). `model` overrides
+    the default (e.g. a faster model for the fast lane)."""
     key = (os.getenv("NVIDIA_API_KEY") or "").strip()
     if not key:
         raise RuntimeError("NVIDIA_API_KEY is not configured")
@@ -55,7 +57,7 @@ def chat(
     effective_max = max(max_tokens, 4096) if thinking else max_tokens
 
     body: Dict[str, object] = {
-        "model": get_model(),
+        "model": (model or get_model()),
         "messages": messages,
         "temperature": temperature,
         "top_p": 0.95,

@@ -34,9 +34,15 @@ async def assistant(body: AssistantRequest, auth_user_id: str = Depends(require_
 
     try:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            _REVAI_EXECUTOR, assistant_service.answer_question, body.message
+        # Hard 43s guard (under the app's 45s client timeout) so a long agent loop
+        # always returns a friendly message instead of a client-side timeout.
+        return await asyncio.wait_for(
+            loop.run_in_executor(_REVAI_EXECUTOR, assistant_service.answer_question, body.message),
+            timeout=43,
         )
+    except asyncio.TimeoutError:
+        print("[RevAI] ENDPOINT TIMEOUT (>43s)", flush=True)
+        return {"text": "That took longer than expected — please try again in a moment."}
     except Exception as exc:  # noqa: BLE001 - never 500 the chat UI
         print(f"[RevAI] ENDPOINT ERROR: {exc!r}", flush=True)
         return {"text": f"[RevAI endpoint error] {exc}"}

@@ -16,3 +16,5 @@ PyJWT==2.10.1
 slowapi
 bleach
 psycopg-pool
+# RevAI agent (Pydantic AI + OpenAI-compatible client for NVIDIA NIM)
+pydantic-ai-slim[openai]>=2.2.0
