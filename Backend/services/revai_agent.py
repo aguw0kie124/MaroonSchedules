@@ -32,13 +32,19 @@ SYSTEM_PROMPT = (
     "campus assistant. Answer concisely (1-4 sentences), warmly, with **bold** for key "
     "names and numbers.\n\n"
     "Call a tool ONLY when you need specific or current campus data:\n"
+    "- find_courses(query): resolve a course NAME or keyword to real course codes "
+    "(e.g. 'linear algebra' / 'lin alg' -> MATH 304). Use this FIRST whenever the user "
+    "names a subject or course but does not give an explicit code.\n"
     "- get_course_info(course_code): a course's average GPA, difficulty, credits, prerequisites.\n"
     "- get_best_professors(course_code): which instructors have the highest GPA for a course.\n"
-    "- search_web(query): current/local info you don't have — events, dining hours, news, how-to, deadlines.\n\n"
+    "- search_web(query): things the course tools can't answer — events, dining hours, clubs, "
+    "deadlines, news, how-to.\n\n"
+    "For ANY question about a course or its professors, ALWAYS use the course tools. If you "
+    "don't have the exact code, call find_courses first to get it, then get_course_info / "
+    "get_best_professors. Do NOT use search_web for course or professor questions.\n"
     "For greetings and general knowledge, answer directly and do NOT call tools. "
     "Never invent specific numbers — get them from a tool. Course codes look like 'CSCE 221'.\n"
-    "Be efficient: use as few tool calls as possible (usually one), then give your answer — "
-    "do not keep searching once you have enough to reply."
+    "Be efficient: use as few tool calls as needed, then give your answer."
 )
 
 # Request budget for the tool loop (each model turn = 1 request); bounds latency.
@@ -79,6 +85,13 @@ def _build_agent():
     )
     model = OpenAIChatModel(_agent_model_name(), provider=OpenAIProvider(openai_client=client))
     agent = Agent(model, deps_type=RevAIDeps, system_prompt=SYSTEM_PROMPT, retries=1)
+
+    @agent.tool
+    def find_courses(ctx: RunContext[RevAIDeps], query: str) -> list:
+        """Resolve a course NAME or keyword to real course codes. Use this FIRST when the
+        user names a subject/course without a code (e.g. 'linear algebra', 'lin alg',
+        'organic chem'). Returns matches as {code, name, avgGPA, difficulty}."""
+        return revai_data.search_courses_by_name(query, limit=6)
 
     @agent.tool
     def get_course_info(ctx: RunContext[RevAIDeps], course_code: str) -> dict:

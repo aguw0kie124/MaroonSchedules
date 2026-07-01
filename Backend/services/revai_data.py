@@ -149,6 +149,47 @@ def course_payload(code: str) -> Dict[str, Any]:
     return {"data": data, "courses": courses_list or None}
 
 
+def search_courses_by_name(query: str, limit: int = 6) -> List[dict]:
+    """Resolve a course NAME/keyword to real course codes from the catalog.
+
+    Handles natural-language and abbreviations ('linear algebra', 'lin alg',
+    'organic chem') via substring + token-prefix matching. Returns the best
+    matches as {code, name, avgGPA, difficulty} so the agent can then call the
+    code-based tools (get_course_info / get_best_professors).
+    """
+    q = (query or "").strip().lower()
+    if not q:
+        return []
+    tokens = [t for t in re.split(r"[^a-z0-9]+", q) if t]
+
+    scored: List[tuple] = []
+    for c in course_repository.get_all_courses():
+        name = str(c.get("name") or "").lower()
+        code = str(c.get("code") or "").lower()
+        if not name and not code:
+            continue
+        words = [w for w in re.split(r"[^a-z0-9]+", f"{code} {name}") if w]
+        if q and (q in name or q in code):
+            score = 100
+        elif tokens and all(any(w.startswith(t) for w in words) for t in tokens):
+            score = 60  # every query token is a prefix of some word ('lin' -> 'linear')
+        else:
+            continue
+        gpa = c.get("avgGPA") if c.get("avgGPA") not in (None, -1) else None
+        scored.append((score, gpa or 0.0, c))
+
+    scored.sort(key=lambda x: (-x[0], -x[1]))
+    out: List[dict] = []
+    for _, _, c in scored[:limit]:
+        out.append({
+            "code": c.get("code"),
+            "name": c.get("name"),
+            "avgGPA": c.get("avgGPA") if c.get("avgGPA") not in (None, -1) else None,
+            "difficulty": c.get("difficulty"),
+        })
+    return out
+
+
 def tamu_query(message: str) -> str:
     """Bias a web-search query toward Texas A&M unless it already mentions it."""
     low = (message or "").lower()
