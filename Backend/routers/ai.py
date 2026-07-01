@@ -19,18 +19,16 @@ class AssistantRequest(BaseModel):
 
 @router.post("/assistant")
 def assistant(body: AssistantRequest, auth_user_id: str = Depends(require_auth)):
-    """RevAI campus assistant — routes the question to campus data, then answers.
-
-    Sync def so FastAPI runs the (blocking) LLM calls in its threadpool.
-    Returns {"text", "card"?, "courses"?} for the RevAI chat screen.
-    """
+    """RevAI campus assistant. Sync def so FastAPI runs the blocking LLM call in
+    its threadpool. Returns {"text"}."""
+    print(f"[RevAI] ENDPOINT HIT — user={auth_user_id} msg={body.message!r}", flush=True)
     from services import assistant_service
 
     try:
         return assistant_service.answer_question(body.message)
     except Exception as exc:  # noqa: BLE001 - never 500 the chat UI
-        print(f"Assistant error: {exc}")
-        return {"text": "Sorry — I couldn't process that just now. Please try again in a moment."}
+        print(f"[RevAI] ENDPOINT ERROR: {exc!r}", flush=True)
+        return {"text": f"[RevAI endpoint error] {exc}"}
 
 
 class VoiceIntentRequest(BaseModel):
