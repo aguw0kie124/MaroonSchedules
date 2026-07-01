@@ -16,14 +16,28 @@ grade distribution). Dining, events, and clubs are added in later slices.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 from repositories import course_repository
 from services import llm_client
 
 logger = logging.getLogger("backend.assistant")
+
+# Hard wall-clock cap for the LLM call. If a free model queues/hangs past the
+# socket timeout, we bail here and return a friendly message so the endpoint
+# always responds well under the client's timeout.
+_LLM_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="revai-llm")
+_ANSWER_HARD_TIMEOUT_S = 28.0
+
+
+def _log(msg: str) -> None:
+    """Print (flushed) so it always shows in the uvicorn console, plus logger."""
+    print(f"[RevAI] {msg}", flush=True)
+    logger.info(msg)
 
 GRADE_POINTS = {"A": 4.0, "B": 3.0, "C": 2.0, "D": 1.0, "F": 0.0}
 
@@ -229,12 +243,14 @@ def answer_question(message: str) -> Dict[str, Any]:
         return {"text": "Ask me anything about courses, professors, dining, or events!"}
 
     import os
-    import time
-
-    if not (os.getenv("OPENROUTER_API_KEY") or "").strip():
-        return dict(NO_KEY_FALLBACK)
 
     started = time.time()
+    _log(f"Q={message!r}")
+
+    if not (os.getenv("OPENROUTER_API_KEY") or "").strip():
+        _log("no OPENROUTER_API_KEY set")
+        return dict(NO_KEY_FALLBACK)
+
     models = llm_client.get_event_classifier_models()
 
     route = _route(message)
@@ -246,17 +262,24 @@ def answer_question(message: str) -> Dict[str, Any]:
         data = payload["data"]
         if payload.get("courses"):
             structured["courses"] = payload["courses"]
+    _log(f"route={route['source']} data={'yes' if data else 'no'} +{time.time() - started:.1f}s -> calling model")
 
     try:
-        text = _answer_text(message, data, models)
+        future = _LLM_POOL.submit(_answer_text, message, data, models)
+        text = future.result(timeout=_ANSWER_HARD_TIMEOUT_S)
+        _log(f"model replied +{time.time() - started:.1f}s")
+    except concurrent.futures.TimeoutError:
+        _log(f"model HARD-TIMEOUT at +{time.time() - started:.1f}s (free model too slow)")
+        text = (
+            "That's taking longer than usual — the free model is busy right now. "
+            "Please try again in a moment."
+        )
     except Exception as exc:  # noqa: BLE001
-        logger.warning("assistant answer failed: %s", exc)
+        _log(f"model error: {exc!r}")
         text = (
             "I had trouble reaching campus data just now. "
             "Try again in a moment, or ask about a specific course like CSCE 221."
         )
 
-    logger.info(
-        "assistant answered (source=%s) in %.1fs", route["source"], time.time() - started
-    )
+    _log(f"done source={route['source']} in {time.time() - started:.1f}s")
     return {"text": text, **structured}
