@@ -5,12 +5,19 @@ from pydantic import BaseModel
 # NOTE: `openai_service` (and the `openai` package) is imported lazily inside the
 # voice endpoints below so the rest of the AI router — including RevAI's
 # /ai/assistant, which uses OpenRouter, not OpenAI — works without that dependency.
+import asyncio
 import shutil
 import os
 import json
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 
 router = APIRouter(prefix="/ai", tags=["AI"])
+
+# Dedicated pool for RevAI's blocking LLM call so it never competes with (or is
+# starved by) the shared request threadpool — important when other endpoints are
+# blocked on a slow/dead database and hogging that shared pool.
+_REVAI_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="revai")
 
 
 class AssistantRequest(BaseModel):
@@ -18,14 +25,18 @@ class AssistantRequest(BaseModel):
 
 
 @router.post("/assistant")
-def assistant(body: AssistantRequest, auth_user_id: str = Depends(require_auth)):
-    """RevAI campus assistant. Sync def so FastAPI runs the blocking LLM call in
-    its threadpool. Returns {"text"}."""
+async def assistant(body: AssistantRequest, auth_user_id: str = Depends(require_auth)):
+    """RevAI campus assistant. Async endpoint that runs the blocking LLM call on a
+    dedicated executor, so it doesn't need — and can't be starved by — the shared
+    request threadpool. Returns {"text"}."""
     print(f"[RevAI] ENDPOINT HIT — user={auth_user_id} msg={body.message!r}", flush=True)
     from services import assistant_service
 
     try:
-        return assistant_service.answer_question(body.message)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            _REVAI_EXECUTOR, assistant_service.answer_question, body.message
+        )
     except Exception as exc:  # noqa: BLE001 - never 500 the chat UI
         print(f"[RevAI] ENDPOINT ERROR: {exc!r}", flush=True)
         return {"text": f"[RevAI endpoint error] {exc}"}
