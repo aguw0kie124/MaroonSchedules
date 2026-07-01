@@ -42,12 +42,18 @@ def init_pool():
     global _db_pool
     if _db_pool is None:
         print("[db_config] Initializing DB connection pool...")
+        # TEMPORARY / FOR NOW: pool acquisition timeout lowered from psycopg's
+        # 30s default to 3s. When the DB is unreachable (e.g. the RDS tunnel is
+        # down during local dev) the 30s wait pinned a worker thread per request,
+        # exhausting the shared request threadpool and hanging EVERY endpoint —
+        # including RevAI, which doesn't even use the DB. 3s lets DB calls fail
+        # fast and release their thread so the app (and RevAI) stays responsive
+        # while the DB is down. Raise DB_POOL_TIMEOUT (or revert to ~30) once a
+        # stable DB connection is restored.
         _db_pool = ConnectionPool(
             CONNECTION_PARAMS,
             min_size=2,      # Keep at least 2 connections alive
             max_size=20,     # Scale up to 20 during bursts
-            # Fail fast when the DB is unreachable so requests don't pin a worker
-            # thread for 30s (the psycopg default) and starve the request pool.
             timeout=float(os.getenv("DB_POOL_TIMEOUT", "3")),
             open=True,
         )
