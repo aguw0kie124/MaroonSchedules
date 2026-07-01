@@ -10,8 +10,9 @@ Pattern (reuses the app's existing OpenRouter LLM client — no native tool-call
 
 Returns the shape the RevAI screen renders: {"text", "card"?, "courses"?}.
 
-Slice 1 supports the "course" source (course difficulty / GPA / best professor /
-grade distribution). Dining, events, and clubs are added in later slices.
+Sources: "course" (catalog + grades data), "web" (Texas A&M web search), and
+"none" (general knowledge / greetings). The model answers from campus data or
+web results when available, otherwise from its own general knowledge.
 """
 
 from __future__ import annotations
@@ -42,13 +43,15 @@ def _log(msg: str) -> None:
 GRADE_POINTS = {"A": 4.0, "B": 3.0, "C": 2.0, "D": 1.0, "F": 0.0}
 
 ANSWER_SYSTEM = (
-    "You are RevAI, a friendly Texas A&M campus assistant. "
-    "Answer the user's question using ONLY the DATA provided (JSON). "
-    "Be concise (1-3 sentences), specific, and warm. "
-    "Use **bold** for key names and numbers. "
-    "Never invent numbers — if DATA is empty, say you couldn't find that and "
-    "mention you can help with courses, professors, and GPAs. "
-    "Reply with plain text only (no JSON, no markdown headings)."
+    "You are RevAI, a friendly, knowledgeable Texas A&M (College Station) campus "
+    "assistant. Answer the user's question helpfully and concisely (1-4 sentences), warmly.\n"
+    "- If DATA is provided (campus records or web search results), base your answer on it "
+    "and prefer it over assumptions. Never invent specific numbers that aren't in DATA.\n"
+    "- If DATA is empty or doesn't cover the question, answer from your own general knowledge "
+    "about Texas A&M, Aggie life, and college in general. Do NOT refuse or say you can't find "
+    "it — just give the most helpful answer you can.\n"
+    "- When you used web results, you may briefly mention the source.\n"
+    "Use **bold** for key names and numbers. Reply with plain text only (no JSON or headings)."
 )
 
 NO_KEY_FALLBACK = {
@@ -200,19 +203,40 @@ def _build_course_payload(code: str) -> Dict[str, Any]:
 COURSE_CODE_RE = re.compile(r"\b([A-Za-z]{2,4})\s*[- ]?\s*(\d{3}[A-Za-z]?)\b")
 
 
-def _route(message: str) -> Dict[str, Any]:
-    """Heuristic router (no LLM): a course code -> 'course', else 'none'.
+GREETING_RE = re.compile(
+    r"^\s*(hi|hey+|hello|howdy|yo|sup|thanks?|thank you|thx|good (morning|afternoon|evening)|"
+    r"what'?s up|who are you|what can you (do|help))\b",
+    re.I,
+)
 
-    A regex is faster and more reliable than a weak free model at pulling out a
-    course code, and it removes an entire LLM round-trip from every request
-    (free :free-tier models often queue for tens of seconds — two calls was the
-    cause of the client timeouts). When more sources (dining/events) or a
-    stronger model land, this can grow back into an LLM router.
+
+def _route(message: str) -> Dict[str, Any]:
+    """Heuristic router (no LLM):
+      - a course code            -> 'course' (catalog + grades data)
+      - a greeting / meta / tiny -> 'none'   (general knowledge, no search)
+      - anything else            -> 'web'    (TAMU web search, then answer)
     """
     match = COURSE_CODE_RE.search(message or "")
     if match:
         return {"source": "course", "args": {"code": f"{match.group(1).upper()} {match.group(2)}"}}
-    return {"source": "none", "args": {}}
+    if GREETING_RE.match(message or "") or len((message or "").split()) < 2:
+        return {"source": "none", "args": {}}
+    return {"source": "web", "args": {"query": message}}
+
+
+def _web_data(message: str) -> Optional[Dict[str, Any]]:
+    """Search the web (biased to Texas A&M) and return snippets for the model."""
+    from services import web_search_service
+
+    low = message.lower()
+    query = (
+        message
+        if any(t in low for t in ("tamu", "texas a&m", "a&m", "aggie"))
+        else f"Texas A&M {message}"
+    )
+    results = web_search_service.search(query, max_results=5)
+    _log(f"web search '{query[:50]}' -> {len(results)} results")
+    return {"web_results": results} if results else None
 
 
 def _answer_text(message: str, data: Any, models: List[str]) -> str:
@@ -286,6 +310,8 @@ def answer_question(message: str) -> Dict[str, Any]:
         data = payload["data"]
         if payload.get("courses"):
             structured["courses"] = payload["courses"]
+    elif route["source"] == "web":
+        data = _web_data(message)
     _log(f"route={route['source']} data={'yes' if data else 'no'} +{time.time() - started:.1f}s -> calling model")
 
     try:
