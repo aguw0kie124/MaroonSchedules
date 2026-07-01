@@ -75,6 +75,22 @@ async def start_background_snapshot_jobs():
     app.state.snapshot_job_tasks = await snapshot_jobs.start_snapshot_jobs()
 
 
+@app.on_event("startup")
+def warm_assistant_course_cache():
+    """Pre-load the course catalog off the request path so RevAI's first course
+    question isn't paying a cold multi-second fetch (which risks the client timeout)."""
+    import threading
+
+    def _warm():
+        try:
+            from repositories import course_repository
+            course_repository.get_all_courses()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[startup] assistant course-cache warm failed: {exc}")
+
+    threading.Thread(target=_warm, daemon=True).start()
+
+
 @app.on_event("shutdown")
 async def stop_background_snapshot_jobs():
     await snapshot_jobs.stop_snapshot_jobs(getattr(app.state, "snapshot_job_tasks", []))

@@ -102,13 +102,26 @@ def _subject_number(code: str) -> tuple[Optional[str], Optional[str]]:
 
 
 def _professors_from_grades(subject: str, number: str) -> List[dict]:
-    """Aggregate per-instructor grade rows into ranked profs (best GPA first)."""
-    try:
-        from routers.grades import _load_or_fetch
+    """Aggregate per-instructor grade rows into ranked profs (best GPA first).
 
-        rows = _load_or_fetch(subject, number)
+    Reads ONLY the pre-cached grades file — it deliberately does not trigger the
+    grades router's live anex.us fetch, which has a 15s timeout and would stack
+    on top of the LLM call and blow the client timeout. Uncached course -> no
+    professors (the answer falls back to course-level facts).
+    """
+    import json
+    import os
+
+    from routers.grades import DATA_DIR
+
+    path = os.path.join(DATA_DIR, f"{subject.upper()}_{number}.json")
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            rows = json.load(f)
     except Exception as exc:  # noqa: BLE001 - grades are best-effort
-        logger.warning("grades lookup failed for %s %s: %s", subject, number, exc)
+        logger.warning("grades read failed for %s %s: %s", subject, number, exc)
         return []
 
     totals: Dict[str, Dict[str, float]] = {}
@@ -199,7 +212,7 @@ def _answer_text(message: str, data: Any, models: List[str]) -> str:
         ],
         models,
         purpose="assistant_answer",
-        timeout_seconds=30.0,
+        timeout_seconds=22.0,
         temperature=0.3,
         max_tokens=320,
     )
