@@ -27,19 +27,6 @@ logger = logging.getLogger("backend.assistant")
 
 GRADE_POINTS = {"A": 4.0, "B": 3.0, "C": 2.0, "D": 1.0, "F": 0.0}
 
-ROUTE_SYSTEM = (
-    "You are RevAI, a Texas A&M (College Station) campus assistant. "
-    "Decide which campus data source can answer the user's question. "
-    "Reply with ONLY a JSON object, no markdown.\n\n"
-    "Sources:\n"
-    '- "course": questions about a specific course — difficulty, average GPA, '
-    "best/easiest professor, grade distribution, prerequisites, or credits. "
-    'args: {"code": "<DEPT NUMBER>"} e.g. {"code": "CSCE 221"}.\n'
-    '- "none": greetings, small talk, or anything not about a specific course.\n\n'
-    'Respond exactly like: {"source": "course", "args": {"code": "CSCE 221"}} '
-    'or {"source": "none", "args": {}}'
-)
-
 ANSWER_SYSTEM = (
     "You are RevAI, a friendly Texas A&M campus assistant. "
     "Answer the user's question using ONLY the DATA provided (JSON). "
@@ -183,27 +170,21 @@ def _build_course_payload(code: str) -> Dict[str, Any]:
 # LLM steps
 # --------------------------------------------------------------------------- #
 
-def _route(message: str, models: List[str]) -> Dict[str, Any]:
-    try:
-        result = llm_client.chat_completion(
-            [
-                {"role": "system", "content": ROUTE_SYSTEM},
-                {"role": "user", "content": message},
-            ],
-            models,
-            purpose="assistant_route",
-            timeout_seconds=10.0,
-            temperature=0.0,
-            max_tokens=120,
-            retry_on_invalid_json=True,
-        )
-        parsed = llm_client.parse_json_object(result.content)
-        source = parsed.get("source")
-        args = parsed.get("args") if isinstance(parsed.get("args"), dict) else {}
-        if source in ("course", "none"):
-            return {"source": source, "args": args}
-    except Exception as exc:  # noqa: BLE001 - routing must never hard-fail
-        logger.warning("assistant route failed: %s", exc)
+COURSE_CODE_RE = re.compile(r"\b([A-Za-z]{2,4})\s*[- ]?\s*(\d{3}[A-Za-z]?)\b")
+
+
+def _route(message: str) -> Dict[str, Any]:
+    """Heuristic router (no LLM): a course code -> 'course', else 'none'.
+
+    A regex is faster and more reliable than a weak free model at pulling out a
+    course code, and it removes an entire LLM round-trip from every request
+    (free :free-tier models often queue for tens of seconds — two calls was the
+    cause of the client timeouts). When more sources (dining/events) or a
+    stronger model land, this can grow back into an LLM router.
+    """
+    match = COURSE_CODE_RE.search(message or "")
+    if match:
+        return {"source": "course", "args": {"code": f"{match.group(1).upper()} {match.group(2)}"}}
     return {"source": "none", "args": {}}
 
 
@@ -218,7 +199,7 @@ def _answer_text(message: str, data: Any, models: List[str]) -> str:
         ],
         models,
         purpose="assistant_answer",
-        timeout_seconds=18.0,
+        timeout_seconds=30.0,
         temperature=0.3,
         max_tokens=320,
     )
@@ -235,13 +216,15 @@ def answer_question(message: str) -> Dict[str, Any]:
         return {"text": "Ask me anything about courses, professors, dining, or events!"}
 
     import os
+    import time
 
     if not (os.getenv("OPENROUTER_API_KEY") or "").strip():
         return dict(NO_KEY_FALLBACK)
 
+    started = time.time()
     models = llm_client.get_event_classifier_models()
 
-    route = _route(message, models)
+    route = _route(message)
     structured: Dict[str, Any] = {}
     data: Any = None
 
@@ -260,4 +243,7 @@ def answer_question(message: str) -> Dict[str, Any]:
             "Try again in a moment, or ask about a specific course like CSCE 221."
         )
 
+    logger.info(
+        "assistant answered (source=%s) in %.1fs", route["source"], time.time() - started
+    )
     return {"text": text, **structured}
