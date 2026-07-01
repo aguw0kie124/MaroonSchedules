@@ -5,15 +5,15 @@ fallback (assistant_service). Kept framework-free so both can import it without
 circular dependencies.
 
 - Course facts come from the in-memory course catalog (course_repository).
-- Professor GPAs come from the PRE-CACHED grades files only (never the grades
-  router's live 15s anex fetch).
+- Professor GPAs come from the grades router's file-first-then-live loader: a
+  course we've never seen is fetched from anex.us on demand and written through
+  to the Data/grades cache, so coverage is the whole catalog (not just a seeded
+  handful) and every later lookup is a fast file read.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import os
 import re
 from typing import Any, Dict, List, Optional
 
@@ -77,17 +77,20 @@ def find_course(code: str) -> Optional[dict]:
 
 
 def professors_from_grades(subject: str, number: str) -> List[dict]:
-    """Ranked instructors (best GPA first) from the PRE-CACHED grades file only."""
-    from routers.grades import DATA_DIR
+    """Ranked instructors (best GPA first) for a course.
 
-    path = os.path.join(DATA_DIR, f"{subject.upper()}_{number}.json")
-    if not os.path.exists(path):
-        return []
+    Uses the grades router's file-first-then-live-anex loader: a course we've
+    never seen is fetched from anex.us on demand and written through to the
+    Data/grades cache, so coverage is the whole catalog and every later lookup
+    is a fast file read. Any failure (anex down, course not found) degrades to
+    an empty list — the caller then says grade data isn't available.
+    """
     try:
-        with open(path, encoding="utf-8") as f:
-            rows = json.load(f)
+        from routers.grades import _load_or_fetch
+
+        rows = _load_or_fetch(subject.upper(), str(number))
     except Exception as exc:  # noqa: BLE001 - grades are best-effort
-        logger.warning("grades read failed for %s %s: %s", subject, number, exc)
+        logger.warning("grades load failed for %s %s: %s", subject, number, exc)
         return []
 
     totals: Dict[str, Dict[str, float]] = {}

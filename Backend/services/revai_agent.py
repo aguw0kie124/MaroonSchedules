@@ -106,7 +106,7 @@ def _build_agent():
         if payload.get("courses"):
             ctx.deps.ui_courses = payload["courses"]  # renders as a card in the app
             return {"professors": payload["courses"]}
-        return {"note": f"No cached grade data for {course_code}; course-level info is still available."}
+        return {"note": f"No grade data available for {course_code}; course-level info is still available."}
 
     @agent.tool
     def search_web(ctx: RunContext[RevAIDeps], query: str) -> list:
