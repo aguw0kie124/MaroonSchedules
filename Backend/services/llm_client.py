@@ -27,6 +27,13 @@ DEFAULT_USER_PROFILE_MODELS: List[str] = [
     "qwen/qwen3-next-80b-a3b-instruct:free",
     "meta-llama/llama-3.3-70b-instruct:free",
 ]
+# RevAI assistant: a stronger/faster model than the tiny classifier models, with
+# solid fallbacks (OpenRouter routes to the next if the first is unavailable).
+DEFAULT_ASSISTANT_MODELS: List[str] = [
+    "deepseek/deepseek-chat-v3-0324:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "qwen/qwen3-next-80b-a3b-instruct:free",
+]
 
 
 class LLMClientError(RuntimeError):
@@ -62,6 +69,13 @@ def get_user_profile_models() -> List[str]:
     return _parse_models(
         os.getenv("OPENROUTER_USER_PROFILE_MODELS"),
         DEFAULT_USER_PROFILE_MODELS,
+    )
+
+
+def get_assistant_models() -> List[str]:
+    return _parse_models(
+        os.getenv("OPENROUTER_ASSISTANT_MODELS"),
+        DEFAULT_ASSISTANT_MODELS,
     )
 
 

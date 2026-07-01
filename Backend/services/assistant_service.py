@@ -237,6 +237,30 @@ def _answer_text(message: str, data: Any, models: List[str]) -> str:
 # Public entry point
 # --------------------------------------------------------------------------- #
 
+def _deterministic_summary(route: Dict[str, Any], data: Any, structured: Dict[str, Any]) -> Optional[str]:
+    """Build a useful reply from already-fetched data WITHOUT the LLM.
+
+    Used when the model is rate-limited/slow so course answers still work — the
+    numbers come from the catalog + grades, not the model.
+    """
+    if route.get("source") != "course" or not isinstance(data, dict):
+        return None
+    code = data.get("code") or "That course"
+    facts = []
+    if data.get("avgGPA") is not None:
+        facts.append(f"an average GPA of {data['avgGPA']}")
+    if data.get("difficulty") and data["difficulty"] != "Unknown":
+        facts.append(f"a difficulty rating of {data['difficulty']}")
+    parts = []
+    if facts:
+        parts.append(f"{code} has " + " and ".join(facts) + ".")
+    courses = structured.get("courses") or []
+    if courses:
+        names = ", ".join(f"{c['name']} ({c['meta']})" for c in courses[:3])
+        parts.append(f"Highest-GPA instructors: {names}.")
+    return " ".join(parts) if parts else None
+
+
 def answer_question(message: str) -> Dict[str, Any]:
     message = (message or "").strip()
     if not message:
@@ -251,7 +275,7 @@ def answer_question(message: str) -> Dict[str, Any]:
         _log("no OPENROUTER_API_KEY set")
         return dict(NO_KEY_FALLBACK)
 
-    models = llm_client.get_event_classifier_models()
+    models = llm_client.get_assistant_models()
 
     route = _route(message)
     structured: Dict[str, Any] = {}
@@ -270,15 +294,15 @@ def answer_question(message: str) -> Dict[str, Any]:
         _log(f"model replied +{time.time() - started:.1f}s")
     except concurrent.futures.TimeoutError:
         _log(f"model HARD-TIMEOUT at +{time.time() - started:.1f}s (free model too slow)")
-        text = (
-            "That's taking longer than usual — the free model is busy right now. "
+        text = _deterministic_summary(route, data, structured) or (
+            "The AI model is busy right now (free-tier rate limit). "
             "Please try again in a moment."
         )
     except Exception as exc:  # noqa: BLE001
         _log(f"model error: {exc!r}")
-        text = (
-            "I had trouble reaching campus data just now. "
-            "Try again in a moment, or ask about a specific course like CSCE 221."
+        text = _deterministic_summary(route, data, structured) or (
+            "The AI model is temporarily rate-limited. Try again in a moment, "
+            "or ask about a specific course like CSCE 221."
         )
 
     _log(f"done source={route['source']} in {time.time() - started:.1f}s")
