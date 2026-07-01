@@ -47,6 +47,32 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+
+@app.middleware("http")
+async def _log_ai_requests(request, call_next):
+    """Log /ai/ requests the instant they arrive (before deps/threadpool), so a
+    request that stalls in dependency resolution is still visible."""
+    is_ai = request.url.path.startswith("/ai/")
+    if is_ai:
+        print(f"[RevAI] >>> incoming {request.method} {request.url.path}", flush=True)
+    response = await call_next(request)
+    if is_ai:
+        print(f"[RevAI] <<< {request.url.path} -> {response.status_code}", flush=True)
+    return response
+
+
+@app.on_event("startup")
+async def _increase_threadpool():
+    """More worker threads so sync endpoints (auth, DB calls) don't starve each
+    other — especially while the DB is slow/unreachable."""
+    try:
+        import anyio
+
+        anyio.to_thread.current_default_thread_limiter().total_tokens = 120
+        print("[startup] threadpool limit set to 120", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[startup] threadpool bump failed: {exc}", flush=True)
+
 raw_cors_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
 if raw_cors_origins.strip():
     cors_allow_origins = [origin.strip() for origin in raw_cors_origins.split(",") if origin.strip()]

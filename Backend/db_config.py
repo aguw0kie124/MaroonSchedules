@@ -46,7 +46,10 @@ def init_pool():
             CONNECTION_PARAMS,
             min_size=2,      # Keep at least 2 connections alive
             max_size=20,     # Scale up to 20 during bursts
-            open=True
+            # Fail fast when the DB is unreachable so requests don't pin a worker
+            # thread for 30s (the psycopg default) and starve the request pool.
+            timeout=float(os.getenv("DB_POOL_TIMEOUT", "3")),
+            open=True,
         )
     return _db_pool
 
