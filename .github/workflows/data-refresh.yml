@@ -25,7 +25,7 @@ permissions:
   actions: write
 
 env:
-  TARGET_BRANCH: agentic # TODO: switch to main once merged
+  TARGET_BRANCH: cicd # TODO: switch to main once merged
 
 jobs:
   refresh:
@@ -115,9 +115,9 @@ jobs:
           script: |
             set -e
             cd "${{ vars.EC2_DEPLOY_PATH }}"
-            git fetch origin agentic
-            git checkout agentic
-            git reset --hard origin/agentic
+            git fetch origin cicd
+            git checkout cicd
+            git reset --hard origin/cicd
             # Backend picks up the new files automatically: its event cache is
             # keyed on file mtime with a 300s TTL, so no restart is needed.
 
