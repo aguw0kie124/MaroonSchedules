@@ -7,7 +7,7 @@ on:
     - cron: "0 13 * * *"   # 13:00 UTC daily
   workflow_dispatch:
 
-engine: claude
+engine: gemini
 
 # The agent only READS the crawl output and (via safe-outputs) proposes an issue.
 # It gets no write token and no deploy access.

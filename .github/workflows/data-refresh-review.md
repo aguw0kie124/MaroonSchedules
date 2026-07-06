@@ -13,7 +13,7 @@ on:
         description: "URL of the refresh workflow run"
         required: false
 
-engine: claude
+engine: gemini
 
 # Read-only audit: the agent never edits data or code.
 permissions:
