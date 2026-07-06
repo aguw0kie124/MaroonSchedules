@@ -121,9 +121,13 @@ jobs:
             # Backend picks up the new files automatically: its event cache is
             # keyed on file mtime with a 300s TTL, so no restart is needed.
 
+  # Optional Claude-powered quality audit. Skipped unless the repo variable
+  # ENABLE_AGENTIC_REVIEW is set to "true" (and it needs the ANTHROPIC_API_KEY
+  # secret). Costs Anthropic API tokens when enabled; the refresh/deploy above
+  # never depend on it.
   review:
     needs: [refresh, deploy]
-    if: needs.refresh.outputs.committed == 'true'
+    if: needs.refresh.outputs.committed == 'true' && vars.ENABLE_AGENTIC_REVIEW == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
