@@ -7,7 +7,7 @@ name: Data Refresh
 
 on:
   schedule:
-    - cron: "0 13 */2 * *" # every other day at 13:00 UTC
+    - cron: "0 13 * * 1" # weekly, Mondays at 13:00 UTC
   workflow_dispatch:
     inputs:
       dry_run:
@@ -105,6 +105,11 @@ jobs:
     if: needs.refresh.outputs.committed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Shared with deploy-backend.yml: serialize all access to the EC2
+    # checkout so two runs never race on `git reset --hard`.
+    concurrency:
+      group: ec2-deploy
+      cancel-in-progress: false
     steps:
       - name: Pull refreshed data on EC2
         uses: appleboy/ssh-action@v1
