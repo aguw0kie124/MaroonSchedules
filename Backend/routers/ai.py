@@ -1,15 +1,20 @@
-from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Depends
-from typing import Dict, Any, List
+from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Depends, Request
+from fastapi.responses import StreamingResponse
+from typing import Dict, Any, List, Literal, Optional
 from auth.clerk_middleware import require_auth
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from rate_limit import limiter
 # NOTE: `openai_service` (and the `openai` package) is imported lazily inside the
 # voice endpoints below so the rest of the AI router — including RevAI's
-# /ai/assistant, which uses OpenRouter, not OpenAI — works without that dependency.
+# /ai/assistant, which uses Gemini (falling back to OpenRouter), not OpenAI —
+# works without that dependency.
 import asyncio
+import functools
 import shutil
 import os
 import json
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 router = APIRouter(prefix="/ai", tags=["AI"])
@@ -19,25 +24,46 @@ router = APIRouter(prefix="/ai", tags=["AI"])
 # blocked on a slow/dead database and hogging that shared pool.
 _REVAI_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="revai")
 
+# Streaming keeps its own per-event bound below rather than a single upfront
+# timeout (see assistant_stream), but this caps the whole connection as a
+# last-resort safety net.
+STREAM_TIMEOUT_S = 55
+
+
+class HistoryTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., max_length=4000)
+
 
 class AssistantRequest(BaseModel):
-    message: str
+    message: str = Field(..., max_length=2000)
+    # Prior turns, oldest first — client-held; the backend stays stateless and
+    # further clips this (see revai/history.py) before it reaches either lane.
+    history: Optional[List[HistoryTurn]] = Field(default=None, max_length=20)
+
+
+def _history_dicts(body: AssistantRequest) -> List[Dict[str, str]]:
+    return [{"role": h.role, "content": h.content} for h in (body.history or [])]
 
 
 @router.post("/assistant")
-async def assistant(body: AssistantRequest, auth_user_id: str = Depends(require_auth)):
+@limiter.limit("10/minute")
+async def assistant(request: Request, body: AssistantRequest, auth_user_id: str = Depends(require_auth)):
     """RevAI campus assistant. Async endpoint that runs the blocking LLM call on a
     dedicated executor, so it doesn't need — and can't be starved by — the shared
     request threadpool. Returns {"text"}."""
     print(f"[RevAI] ENDPOINT HIT — user={auth_user_id} msg={body.message!r}", flush=True)
-    from services import assistant_service
+    import revai
 
     try:
         loop = asyncio.get_running_loop()
+        call = functools.partial(
+            revai.answer_question, body.message, history=_history_dicts(body), user_id=auth_user_id
+        )
         # Hard 43s guard (under the app's 45s client timeout) so a long agent loop
         # always returns a friendly message instead of a client-side timeout.
         return await asyncio.wait_for(
-            loop.run_in_executor(_REVAI_EXECUTOR, assistant_service.answer_question, body.message),
+            loop.run_in_executor(_REVAI_EXECUTOR, call),
             timeout=43,
         )
     except asyncio.TimeoutError:
@@ -46,6 +72,53 @@ async def assistant(body: AssistantRequest, auth_user_id: str = Depends(require_
     except Exception as exc:  # noqa: BLE001 - never 500 the chat UI
         print(f"[RevAI] ENDPOINT ERROR: {exc!r}", flush=True)
         return {"text": f"[RevAI endpoint error] {exc}"}
+
+
+@router.post("/assistant/stream")
+@limiter.limit("10/minute")
+async def assistant_stream(request: Request, body: AssistantRequest, auth_user_id: str = Depends(require_auth)):
+    """RevAI campus assistant, streamed as Server-Sent Events.
+
+    Always drives the agent lane directly (async, no executor) — it already
+    answers greetings and general questions without calling tools, so there's
+    no need to duplicate the fast-lane/fallback chain here. The non-streaming
+    /ai/assistant keeps that chain unchanged for clients that don't stream.
+
+    Event shapes (one JSON object per `data:` line):
+      {"type": "status", "text": "..."}                 — a tool call is in flight
+      {"type": "delta",  "text": "..."}                  — a chunk of the answer
+      {"type": "done",   "text": "...", card?, courses?} — final answer + UI payload
+    """
+    print(f"[RevAI] STREAM HIT — user={auth_user_id} msg={body.message!r}", flush=True)
+
+    message = body.message
+    history = _history_dicts(body)
+
+    async def event_source():
+        from revai import agent as revai_agent
+
+        started = time.time()
+        agen = revai_agent.answer_stream(message, history=history, user_id=auth_user_id).__aiter__()
+        try:
+            while True:
+                remaining = STREAM_TIMEOUT_S - (time.time() - started)
+                if remaining <= 0:
+                    raise asyncio.TimeoutError()
+                try:
+                    event = await asyncio.wait_for(agen.__anext__(), timeout=remaining)
+                except StopAsyncIteration:
+                    break
+                yield f"data: {json.dumps(event)}\n\n"
+        except asyncio.TimeoutError:
+            print("[RevAI] STREAM TIMEOUT", flush=True)
+            fallback = {"type": "done", "text": "That took longer than expected — please try again in a moment."}
+            yield f"data: {json.dumps(fallback)}\n\n"
+        except Exception as exc:  # noqa: BLE001 - never break the SSE stream
+            print(f"[RevAI] STREAM ERROR: {exc!r}", flush=True)
+            fallback = {"type": "done", "text": "Sorry — I couldn't reach campus data just now. Try again in a moment."}
+            yield f"data: {json.dumps(fallback)}\n\n"
+
+    return StreamingResponse(event_source(), media_type="text/event-stream")
 
 
 class VoiceIntentRequest(BaseModel):
