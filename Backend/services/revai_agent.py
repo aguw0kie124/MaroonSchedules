@@ -5,9 +5,8 @@ professor grade distributions, and web search — and can chain them. Used only
 for substantive questions; simple/conversational questions take the fast lane in
 assistant_service.
 
-Model: NVIDIA NIM (OpenAI-compatible). Agent model can be overridden with
-NVIDIA_AGENT_MODEL (defaults to NVIDIA_ASSISTANT_MODEL) — useful if a faster
-Nemotron handles tool-calling better/quicker than the default.
+Model: Google Gemini. The agent model can be overridden with GEMINI_AGENT_MODEL
+(defaults to Flash, which is fast and tool-capable).
 """
 
 from __future__ import annotations
@@ -17,13 +16,12 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from openai import AsyncOpenAI
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
+from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.usage import UsageLimits
 
-from services import nvidia_client, revai_data, web_search_service
+from services import gemini_client, revai_data, web_search_service
 
 logger = logging.getLogger("backend.revai_agent")
 
@@ -48,11 +46,10 @@ SYSTEM_PROMPT = (
 )
 
 # Request budget for the tool loop (each model turn = 1 request); bounds latency.
-AGENT_REQUEST_LIMIT = int(os.getenv("NVIDIA_AGENT_REQUEST_LIMIT", "4"))
+AGENT_REQUEST_LIMIT = int(os.getenv("GEMINI_AGENT_REQUEST_LIMIT", "4"))
 # Per-HTTP-request timeout to the model (seconds). Keep request_limit * this under
-# the endpoint's 43s guard. The big Ultra model is slow per call in a tool loop —
-# point NVIDIA_AGENT_MODEL at Nemotron Super for a usable agent.
-AGENT_HTTP_TIMEOUT = float(os.getenv("NVIDIA_AGENT_TIMEOUT", "18"))
+# the endpoint's 43s guard.
+AGENT_HTTP_TIMEOUT = float(os.getenv("GEMINI_AGENT_TIMEOUT", "18"))
 
 
 @dataclass
@@ -62,28 +59,31 @@ class RevAIDeps:
     ui_card: Optional[dict] = None
 
 
-# The big Ultra model is too slow per call for a tool loop (it times out). Nemotron
-# Super is tool-capable and fast (~5s), so it's the agent default. The fast lane and
-# the non-agent fallback still use the main model (Ultra) for direct answers.
-DEFAULT_AGENT_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+# Flash is the agent default: fast per call (which matters in a multi-turn tool
+# loop) and reliable at function calling. Point GEMINI_AGENT_MODEL at a Pro model
+# if answer quality ever matters more than latency.
+DEFAULT_AGENT_MODEL = "gemini-3.5-flash"
 
 
 def _agent_model_name() -> str:
-    return (os.getenv("NVIDIA_AGENT_MODEL") or "").strip() or DEFAULT_AGENT_MODEL
+    return (os.getenv("GEMINI_AGENT_MODEL") or "").strip() or DEFAULT_AGENT_MODEL
 
 
 _agent = None  # built lazily so import never requires the key / never breaks startup
 
 
 def _build_agent():
-    key = (os.getenv("NVIDIA_API_KEY") or "").strip()
-    client = AsyncOpenAI(
-        base_url="https://integrate.api.nvidia.com/v1",
-        api_key=key or "missing",
+    provider = GoogleProvider(api_key=gemini_client.api_key() or "missing")
+    settings = GoogleModelSettings(
         timeout=AGENT_HTTP_TIMEOUT,
-        max_retries=0,
+        # Gemini 2.5+ thinks by default; in a tool loop that cost is paid on every
+        # turn, so it's off unless GEMINI_ENABLE_THINKING says otherwise. The portable
+        # `thinking` flag maps to thinking_level on Gemini 3+ and thinking_budget on
+        # 2.5 (and is ignored by always-thinking Pro models), so this survives a
+        # GEMINI_AGENT_MODEL swap in either direction.
+        thinking=gemini_client.thinking_enabled(),
     )
-    model = OpenAIChatModel(_agent_model_name(), provider=OpenAIProvider(openai_client=client))
+    model = GoogleModel(_agent_model_name(), provider=provider, settings=settings)
     agent = Agent(model, deps_type=RevAIDeps, system_prompt=SYSTEM_PROMPT, retries=1)
 
     @agent.tool

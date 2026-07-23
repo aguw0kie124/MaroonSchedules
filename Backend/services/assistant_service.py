@@ -52,17 +52,17 @@ def is_simple(message: str) -> bool:
 
 
 def _fast_answer(message: str) -> str:
-    """One quick LLM call, no tools. Uses NVIDIA_FAST_MODEL if set (else the default)."""
-    from services import nvidia_client
+    """One quick LLM call, no tools. Uses GEMINI_FAST_MODEL if set (else the default)."""
+    from services import gemini_client
 
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": FAST_SYSTEM_PROMPT},
         {"role": "user", "content": message},
     ]
-    if nvidia_client.is_configured():
-        fast_model = (os.getenv("NVIDIA_FAST_MODEL") or "").strip() or None
-        _log(f"fast provider=nvidia model={fast_model or nvidia_client.get_model()}")
-        return nvidia_client.chat(
+    if gemini_client.is_configured():
+        fast_model = (os.getenv("GEMINI_FAST_MODEL") or "").strip() or None
+        _log(f"fast provider=gemini model={fast_model or gemini_client.get_model()}")
+        return gemini_client.chat(
             messages, model=fast_model, temperature=0.3,
             max_tokens=FAST_MAX_TOKENS, timeout_seconds=FAST_TIMEOUT_S,
         )

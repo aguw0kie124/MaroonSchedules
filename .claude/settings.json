@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/siddharth.exe/Documents/anzen/.venv/bin/python3.13\" -m anzen.claude_code_hook"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -94,10 +94,14 @@ them, and then writes the final answer.
 Built in `revai_agent._build_agent()`:
 
 - **Framework:** Pydantic AI `Agent` with typed dependencies (`RevAIDeps`).
-- **Model:** NVIDIA NIM (OpenAI-compatible) via `AsyncOpenAI`. The agent defaults
-  to **Nemotron Super** (`nvidia/nemotron-3-super-120b-a12b`) because it's
-  tool-capable and fast (~5s/call); the large Ultra model is too slow per call
-  for a tool loop and times out.
+- **Model:** Google Gemini via Pydantic AI's `GoogleModel`/`GoogleProvider` (the
+  `google-genai` SDK). The agent defaults to **`gemini-3.5-flash`** because it's
+  fast per call — which compounds across a multi-turn tool loop — and reliable at
+  function calling. Thinking is disabled by default since Gemini 2.5+ reasons by
+  default and that cost is paid on every turn; set `GEMINI_ENABLE_THINKING=true`
+  to turn it back on. The agent uses Pydantic AI's portable `thinking` setting,
+  which maps to `thinking_level` on Gemini 3+ and `thinking_budget` on 2.5, so
+  changing `GEMINI_AGENT_MODEL` across generations needs no code change.
 - **Budget:** `AGENT_REQUEST_LIMIT = 4` model turns, `AGENT_HTTP_TIMEOUT = 18s`
   per call. `request_limit × timeout` is kept under the endpoint's 43s guard.
 - **System prompt:** tells the model to call tools only for specific/current
@@ -156,17 +160,17 @@ best-effort — any failure returns `[]` and the model answers from general
 knowledge.
 
 ### LLM clients
-- [nvidia_client.py](../Backend/services/nvidia_client.py) — the NVIDIA NIM chat
-  call used by the fast lane (stdlib `urllib`, no `openai` dependency).
-- The agent lane uses `AsyncOpenAI` pointed at the NVIDIA base URL.
-- `llm_client` is the OpenRouter fallback when NVIDIA isn't configured.
+- [gemini_client.py](../Backend/services/gemini_client.py) — the Gemini call used
+  by the fast lane, via the `google-genai` SDK.
+- The agent lane uses Pydantic AI's `GoogleModel` with the same API key.
+- `llm_client` is the OpenRouter fallback when Gemini isn't configured.
 
 ---
 
 ## Reliability engineering
 
-RevAI runs on a slow, free-tier model, so most of the design defends latency and
-availability:
+RevAI runs on a free-tier model with rate limits, so most of the design defends
+latency and availability:
 
 - **Dedicated executor** — RevAI's blocking call can't be starved by the shared
   request pool.
@@ -185,13 +189,13 @@ availability:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `NVIDIA_API_KEY` | — | Enables the NVIDIA provider (required for RevAI). |
-| `NVIDIA_ASSISTANT_MODEL` | `nemotron-3-ultra-550b-a55b` | Main model (fast lane / direct answers). |
-| `NVIDIA_AGENT_MODEL` | `nemotron-3-super-120b-a12b` | Tool-loop model (fast, tool-capable). |
-| `NVIDIA_FAST_MODEL` | (main) | Optional override for the fast lane. |
-| `NVIDIA_AGENT_REQUEST_LIMIT` | `4` | Max model turns in the tool loop. |
-| `NVIDIA_AGENT_TIMEOUT` | `18` | Per-call HTTP timeout (seconds). |
-| `NVIDIA_ENABLE_THINKING` | `false` | Reasoning mode (slower). |
+| `GEMINI_API_KEY` | — | Enables the Gemini provider (required for RevAI). `GOOGLE_API_KEY` also works. |
+| `GEMINI_ASSISTANT_MODEL` | `gemini-3.5-flash` | Main model (fast lane / direct answers). |
+| `GEMINI_AGENT_MODEL` | `gemini-3.5-flash` | Tool-loop model. |
+| `GEMINI_FAST_MODEL` | (main) | Optional override for the fast lane. |
+| `GEMINI_AGENT_REQUEST_LIMIT` | `4` | Max model turns in the tool loop. |
+| `GEMINI_AGENT_TIMEOUT` | `18` | Per-call HTTP timeout (seconds). |
+| `GEMINI_ENABLE_THINKING` | `false` | Reasoning mode (slower). |
 | `TAVILY_API_KEY` | — | Enables the preferred web-search provider. |
 
 ---
