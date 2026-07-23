@@ -66,6 +66,15 @@ function warnMissingApiKeyOnce() {
     }
 }
 
+/**
+ * Exposed for callers that bypass the global fetch interceptor (e.g. `expo/fetch`
+ * for streaming responses) but still need the same x-api-key / bearer-token /
+ * Content-Type logic every other request gets.
+ */
+export async function buildApiHeaders(init: RequestInit = {}): Promise<Record<string, string>> {
+    return buildHeaders(init);
+}
+
 async function buildHeaders(init: RequestInit = {}, options: TokenProviderOptions = {}): Promise<Record<string, string>> {
     const headers = headersToObject(init.headers);
     warnMissingApiKeyOnce();

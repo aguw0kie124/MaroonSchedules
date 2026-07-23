@@ -19,8 +19,10 @@ import { useTheme } from './SharedUI';
 import { ScalePressable } from './common/Motion';
 import {
   askAssistant,
+  streamAssistant,
   GREETING,
   SUGGESTION_CHIPS,
+  type AssistantHistoryTurn,
   type AssistantReply,
 } from '../services/assistantService';
 
@@ -111,6 +113,9 @@ export function AssistantScreen() {
   ]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  // Which AI message is currently receiving stream events (drives the inline
+  // typing indicator inside that specific bubble).
+  const [streamingId, setStreamingId] = useState<string | null>(null);
 
   const nextId = () => `m${idRef.current++}`;
 
@@ -128,28 +133,65 @@ export function AssistantScreen() {
       if (!text || sending) return;
 
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+
+      // Last ~8 turns, text only (cards/course lists aren't useful as context).
+      const history: AssistantHistoryTurn[] = messages
+        .filter((m) => (m.role === 'user' ? !!m.text : !!m.reply?.text))
+        .slice(-8)
+        .map((m) => ({
+          role: m.role === 'user' ? ('user' as const) : ('assistant' as const),
+          content: (m.role === 'user' ? m.text : m.reply?.text) || '',
+        }));
+
       setMessages((prev) => [...prev, { id: nextId(), role: 'user', text }]);
       setInput('');
       setSending(true);
 
+      const aiId = nextId();
+      setStreamingId(aiId);
+      setMessages((prev) => [...prev, { id: aiId, role: 'ai' }]);
+
+      let deltaStarted = false;
       try {
-        const reply = await askAssistant(text);
-        setMessages((prev) => [...prev, { id: nextId(), role: 'ai', reply }]);
+        await streamAssistant(text, history, (event) => {
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== aiId) return m;
+              if (event.type === 'status') {
+                // Once real content starts arriving, ignore any further status text.
+                return deltaStarted ? m : { ...m, reply: { text: event.text } };
+              }
+              if (event.type === 'delta') {
+                const prevText = deltaStarted ? m.reply?.text || '' : '';
+                deltaStarted = true;
+                return { ...m, reply: { text: prevText + event.text } };
+              }
+              // done — replaces whatever partial text/status was showing
+              return { ...m, reply: { text: event.text, card: event.card, courses: event.courses } };
+            }),
+          );
+        });
       } catch (err) {
-        console.error('RevAI request failed:', err);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: nextId(),
-            role: 'ai',
-            reply: { text: "Sorry — I couldn't reach campus data just now. Try again in a moment." },
-          },
-        ]);
+        console.error('RevAI stream failed, falling back:', err);
+        try {
+          const reply = await askAssistant(text, history);
+          setMessages((prev) => prev.map((m) => (m.id === aiId ? { ...m, reply } : m)));
+        } catch (err2) {
+          console.error('RevAI request failed:', err2);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiId
+                ? { ...m, reply: { text: "Sorry — I couldn't reach campus data just now. Try again in a moment." } }
+                : m,
+            ),
+          );
+        }
       } finally {
         setSending(false);
+        setStreamingId(null);
       }
     },
-    [input, sending],
+    [input, sending, messages],
   );
 
   const startNewChat = useCallback(() => {
@@ -212,12 +254,14 @@ export function AssistantScreen() {
                   { backgroundColor: COLORS.surface, borderColor: COLORS.border },
                 ]}
               >
-                {!!msg.reply?.text && (
+                {!!msg.reply?.text ? (
                   <RichText
                     text={msg.reply.text}
                     baseStyle={[styles.bubbleText, { color: COLORS.textPrimary }]}
                     boldColor={COLORS.primary}
                   />
+                ) : (
+                  msg.id === streamingId && <TypingDots color={COLORS.textTertiary} />
                 )}
 
                 {/* Inline status card (e.g. dining hours) */}
@@ -286,21 +330,6 @@ export function AssistantScreen() {
               </View>
             </View>
           ),
-        )}
-
-        {sending && (
-          <View style={[styles.row, styles.rowAi]}>
-            <View
-              style={[
-                styles.bubble,
-                styles.bubbleAi,
-                styles.typingBubble,
-                { backgroundColor: COLORS.surface, borderColor: COLORS.border },
-              ]}
-            >
-              <TypingDots color={COLORS.textTertiary} />
-            </View>
-          </View>
         )}
       </ScrollView>
 
@@ -404,7 +433,6 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 
-  typingBubble: { paddingVertical: 14, paddingHorizontal: 16 },
   typingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   typingDot: { width: 8, height: 8, borderRadius: 4 },
 
