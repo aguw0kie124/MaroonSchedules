@@ -1,7 +1,7 @@
 """RevAI campus assistant — dispatch layer (two lanes).
 
   - FAST LANE (simple / conversational): one quick LLM call, no tools. Snappy.
-  - AGENT LANE (needs real data): the Pydantic AI tool loop (revai_agent).
+  - AGENT LANE (needs real data): the Pydantic AI tool loop (revai/agent.py).
 
 Loud [RevAI] logging; on failure we fall back (agent -> plain call -> deterministic
 course summary) and surface errors as reply text instead of silent timeouts.
@@ -51,14 +51,13 @@ def is_simple(message: str) -> bool:
     return not _DATA_SIGNAL_RE.search(message or "")
 
 
-def _fast_answer(message: str) -> str:
+def _fast_answer(message: str, history: Optional[List[Dict[str, str]]] = None) -> str:
     """One quick LLM call, no tools. Uses GEMINI_FAST_MODEL if set (else the default)."""
-    from services import gemini_client
+    from .clients import gemini as gemini_client
 
-    messages: List[Dict[str, str]] = [
-        {"role": "system", "content": FAST_SYSTEM_PROMPT},
-        {"role": "user", "content": message},
-    ]
+    messages: List[Dict[str, str]] = [{"role": "system", "content": FAST_SYSTEM_PROMPT}]
+    messages.extend(history or [])
+    messages.append({"role": "user", "content": message})
     if gemini_client.is_configured():
         fast_model = (os.getenv("GEMINI_FAST_MODEL") or "").strip() or None
         _log(f"fast provider=gemini model={fast_model or gemini_client.get_model()}")
@@ -76,7 +75,7 @@ def _fast_answer(message: str) -> str:
 
 def _deterministic_course_summary(message: str) -> Optional[Dict[str, Any]]:
     """Build a course answer from data WITHOUT the LLM (used when the model is down)."""
-    from services import revai_data
+    from . import data as revai_data
 
     match = _COURSE_CODE_RE.search(message or "")
     if not match:
@@ -105,18 +104,29 @@ def _deterministic_course_summary(message: str) -> Optional[Dict[str, Any]]:
     return out
 
 
-def answer_question(message: str) -> Dict[str, Any]:
+def answer_question(
+    message: str,
+    history: Optional[List[Dict[str, Any]]] = None,
+    user_id: Optional[str] = None,
+) -> Dict[str, Any]:
     message = (message or "").strip()
     _log(f"Q={message!r}")
     if not message:
         return {"text": "Ask me anything about Texas A&M — courses, professors, dining, events, and more!"}
 
     started = time.time()
+    from . import history as history_mod
+
+    clipped = history_mod.clip(history)
 
     # -------- FAST LANE --------
+    # NOTE: a follow-up like "who teaches it?" carries no data-signal keyword of
+    # its own, so it lands here even with course history in context — it can use
+    # that history but can't call tools. Fixing that is lane-routing accuracy
+    # work (tracked separately), not a history concern.
     if is_simple(message):
         try:
-            text = _fast_answer(message)
+            text = _fast_answer(message, history=clipped)
             _log(f"fast OK in {time.time() - started:.1f}s")
             return {"text": text}
         except Exception as exc:  # noqa: BLE001
@@ -128,10 +138,10 @@ def answer_question(message: str) -> Dict[str, Any]:
 
     # -------- AGENT LANE --------
     try:
-        from services import revai_agent
+        from . import agent as revai_agent
 
         _log("agent lane")
-        out = revai_agent.answer(message)
+        out = revai_agent.answer(message, history=clipped, user_id=user_id)
         _log(f"agent OK in {time.time() - started:.1f}s courses={'courses' in out}")
         return out
     except Exception as exc:  # noqa: BLE001 - agent unavailable/failed -> graceful fallback
@@ -144,6 +154,6 @@ def answer_question(message: str) -> Dict[str, Any]:
         if det:
             return det
         try:
-            return {"text": _fast_answer(message)}
+            return {"text": _fast_answer(message, history=clipped)}
         except Exception as exc2:  # noqa: BLE001
             return {"text": f"[RevAI error] {exc2}"}

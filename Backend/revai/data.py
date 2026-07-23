@@ -1,14 +1,15 @@
 """Pure campus-data helpers for RevAI (no LLM, no framework).
 
-Shared by the Pydantic AI agent tools (revai_agent) and the deterministic
-fallback (assistant_service). Kept framework-free so both can import it without
-circular dependencies.
+Shared by the Pydantic AI agent tools (revai/agent.py) and the deterministic
+fallback (revai/dispatch.py). Kept framework-free so both can import it
+without circular dependencies.
 
-- Course facts come from the in-memory course catalog (course_repository).
-- Professor GPAs come from the grades router's file-first-then-live loader: a
-  course we've never seen is fetched from anex.us on demand and written through
-  to the Data/grades cache, so coverage is the whole catalog (not just a seeded
-  handful) and every later lookup is a fast file read.
+- Course facts come from the in-memory course catalog (datasources.get_all_courses).
+- Professor GPAs come from the grades file-first-then-live loader
+  (datasources.load_grade_rows): a course we've never seen is fetched from
+  anex.us on demand and written through to the Data/grades cache, so coverage
+  is the whole catalog (not just a seeded handful) and every later lookup is a
+  fast file read.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from repositories import course_repository
+from . import datasources
 
 logger = logging.getLogger("backend.revai_data")
 
@@ -68,7 +69,7 @@ def find_course(code: str) -> Optional[dict]:
     if not code:
         return None
     normalized = normalize_code(code)
-    for candidate in course_repository.get_all_courses():
+    for candidate in datasources.get_all_courses():
         cand_id = normalize_code(str(candidate.get("id", "")))
         cand_code = normalize_code(str(candidate.get("code", "")))
         if normalized and normalized in (cand_id, cand_code):
@@ -79,16 +80,14 @@ def find_course(code: str) -> Optional[dict]:
 def professors_from_grades(subject: str, number: str) -> List[dict]:
     """Ranked instructors (best GPA first) for a course.
 
-    Uses the grades router's file-first-then-live-anex loader: a course we've
-    never seen is fetched from anex.us on demand and written through to the
+    Uses the grades file-first-then-live-anex loader: a course we've never
+    seen is fetched from anex.us on demand and written through to the
     Data/grades cache, so coverage is the whole catalog and every later lookup
     is a fast file read. Any failure (anex down, course not found) degrades to
     an empty list — the caller then says grade data isn't available.
     """
     try:
-        from routers.grades import _load_or_fetch
-
-        rows = _load_or_fetch(subject.upper(), str(number))
+        rows = datasources.load_grade_rows(subject.upper(), str(number))
     except Exception as exc:  # noqa: BLE001 - grades are best-effort
         logger.warning("grades load failed for %s %s: %s", subject, number, exc)
         return []
@@ -166,7 +165,7 @@ def search_courses_by_name(query: str, limit: int = 6) -> List[dict]:
     tokens = [t for t in re.split(r"[^a-z0-9]+", q) if t]
 
     scored: List[tuple] = []
-    for c in course_repository.get_all_courses():
+    for c in datasources.get_all_courses():
         name = str(c.get("name") or "").lower()
         code = str(c.get("code") or "").lower()
         if not name and not code:
@@ -199,3 +198,176 @@ def tamu_query(message: str) -> str:
     if any(t in low for t in ("tamu", "texas a&m", "a&m", "aggie")):
         return message
     return f"Texas A&M {message}"
+
+
+_TIME_RANGE_RE = re.compile(
+    r"(\d{1,2}:\d{2}\s*[AaPp][Mm])\s*[-–—]\s*(\d{1,2}:\d{2}\s*[AaPp][Mm])"
+)
+
+
+def _parse_open_now(hours_text: Optional[str]) -> Optional[bool]:
+    """Best-effort 'is it open right now' from an hours string like
+    'Breakfast: 7:00 AM – 2:30 PM; Lunch: 11:00 AM – 2:00 PM' or
+    '7:00 AM - 8:00 PM' or 'Closed'. Returns None if the text doesn't contain
+    a recognizable range (caller should omit the status pill in that case)."""
+    from datetime import datetime
+
+    from services.dining_service import CENTRAL_TZ
+
+    if not hours_text:
+        return None
+    if "closed" in hours_text.lower() and not _TIME_RANGE_RE.search(hours_text):
+        return False
+
+    ranges = _TIME_RANGE_RE.findall(hours_text)
+    if not ranges:
+        return None
+
+    now = datetime.now(CENTRAL_TZ)
+    for start_str, end_str in ranges:
+        try:
+            start = datetime.strptime(start_str.strip().upper(), "%I:%M %p").replace(
+                year=now.year, month=now.month, day=now.day, tzinfo=now.tzinfo
+            )
+            end = datetime.strptime(end_str.strip().upper(), "%I:%M %p").replace(
+                year=now.year, month=now.month, day=now.day, tzinfo=now.tzinfo
+            )
+        except ValueError:
+            continue
+        if start <= now <= end:
+            return True
+    return False
+
+
+def dining_hours(hall_name: str) -> Optional[Dict[str, Any]]:
+    """{name, detail, status?} for a dining hall/eatery, or None if `hall_name`
+    doesn't resolve to a known dining location. `detail` prefers today's live
+    meal-period breakdown, falling back to the typical weekday hours."""
+    place = datasources.resolve_campus_place(hall_name)
+    if not place or place.get("type") != "Dining":
+        return None
+
+    try:
+        hours = datasources.dining_hours_raw(place["place_id"])
+    except Exception as exc:  # noqa: BLE001 - best-effort
+        logger.warning("dining hours lookup failed for %s: %s", place["place_id"], exc)
+        hours = {"live": None, "static": None}
+
+    detail = hours.get("live") or hours.get("static") or "Hours unavailable right now."
+    card: Dict[str, Any] = {"name": place["name"], "detail": detail}
+
+    is_open = _parse_open_now(hours.get("live") or hours.get("static"))
+    if is_open is not None:
+        card["status"] = {
+            "label": "Open now" if is_open else "Closed now",
+            "tone": "open" if is_open else "closed",
+        }
+    return card
+
+
+def facility_busyness(name: str) -> Optional[Dict[str, Any]]:
+    """{name, percent_full, available_seats, capacity} for a gym/library, or
+    None if `name` doesn't resolve to a place with live capacity data."""
+    place = datasources.resolve_campus_place(name)
+    if not place:
+        return None
+
+    try:
+        capacity = datasources.facility_capacity_raw(place["place_id"])
+    except Exception as exc:  # noqa: BLE001 - best-effort
+        logger.warning("facility capacity lookup failed for %s: %s", place["place_id"], exc)
+        return None
+
+    if not capacity:
+        return None
+
+    return {
+        "name": place["name"],
+        "percent_full": capacity.get("percent_full"),
+        "available_seats": capacity.get("available_seats"),
+        "capacity": capacity.get("capacity"),
+        "current_count": capacity.get("current_count"),
+    }
+
+
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+def campus_events(day: Optional[str] = None, category: Optional[str] = None, limit: int = 8) -> List[Dict[str, Any]]:
+    """Upcoming campus events, each shaped as {title, start, location, category}.
+    `day` is a loose free-text hint: 'today', 'tomorrow', a weekday name, or
+    None for no extra date filtering beyond what's already upcoming."""
+    from datetime import datetime, timedelta
+
+    from services.dining_service import CENTRAL_TZ
+
+    try:
+        events = datasources.campus_events_raw(category=category, limit=max(limit * 4, 40))
+    except Exception as exc:  # noqa: BLE001 - best-effort
+        logger.warning("campus events lookup failed: %s", exc)
+        return []
+
+    now = datetime.now(CENTRAL_TZ)
+    target_date = None
+    day_norm = (day or "").strip().lower()
+    if day_norm == "today":
+        target_date = now.date()
+    elif day_norm == "tomorrow":
+        target_date = (now + timedelta(days=1)).date()
+    elif day_norm in _WEEKDAYS:
+        offset = (_WEEKDAYS.index(day_norm) - now.weekday()) % 7
+        target_date = (now + timedelta(days=offset)).date()
+
+    out: List[Dict[str, Any]] = []
+    for event in events:
+        start_raw = event.get("start_time")
+        start_dt = None
+        if start_raw:
+            try:
+                start_dt = datetime.fromisoformat(str(start_raw).replace("Z", "+00:00")).astimezone(CENTRAL_TZ)
+            except ValueError:
+                start_dt = None
+
+        if target_date is not None:
+            if not start_dt or start_dt.date() != target_date:
+                continue
+
+        out.append({
+            "title": event.get("title"),
+            "start": start_dt.strftime("%a %I:%M %p").replace(" 0", " ") if start_dt else None,
+            "location": event.get("location"),
+            "category": event.get("primary_category"),
+        })
+        if len(out) >= limit:
+            break
+
+    return out
+
+
+def my_schedule(clerk_id: str) -> List[Dict[str, Any]]:
+    """The signed-in user's enrolled sections, each shaped as
+    {code, name, section, instructor, days, time}."""
+    try:
+        sections = datasources.user_schedule_sections_raw(clerk_id)
+    except Exception as exc:  # noqa: BLE001 - best-effort
+        logger.warning("schedule lookup failed for %s: %s", clerk_id, exc)
+        return []
+
+    out: List[Dict[str, Any]] = []
+    for s in sections:
+        meeting = (s.get("meetings") or [{}])[0]
+        days = "".join(meeting.get("daysOfWeek") or []) or None
+        begin, end = meeting.get("beginTime"), meeting.get("endTime")
+        time_label = f"{begin}-{end}" if begin and end else None
+        instructors = s.get("instructors") or []
+        instructor = instructors[0].get("name") if instructors and instructors[0].get("name") else None
+
+        out.append({
+            "code": s.get("course_display") or f"{s.get('dept', '')} {s.get('courseNumber', '')}".strip(),
+            "name": s.get("name") or s.get("title"),
+            "section": s.get("sectionNumber"),
+            "instructor": instructor,
+            "days": days,
+            "time": time_label,
+        })
+    return out
