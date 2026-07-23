@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from typing import Dict, Any, List, Literal, Optional
 from auth.clerk_middleware import require_auth
 from pydantic import BaseModel, Field
-from rate_limit import limiter
+from rate_limit import limiter, user_or_ip
 # NOTE: `openai_service` (and the `openai` package) is imported lazily inside the
 # voice endpoints below so the rest of the AI router — including RevAI's
 # /ai/assistant, which uses Gemini (falling back to OpenRouter), not OpenAI —
@@ -47,7 +47,7 @@ def _history_dicts(body: AssistantRequest) -> List[Dict[str, str]]:
 
 
 @router.post("/assistant")
-@limiter.limit("10/minute")
+@limiter.limit("10/minute", key_func=user_or_ip)
 async def assistant(request: Request, body: AssistantRequest, auth_user_id: str = Depends(require_auth)):
     """RevAI campus assistant. Async endpoint that runs the blocking LLM call on a
     dedicated executor, so it doesn't need — and can't be starved by — the shared
@@ -75,7 +75,7 @@ async def assistant(request: Request, body: AssistantRequest, auth_user_id: str 
 
 
 @router.post("/assistant/stream")
-@limiter.limit("10/minute")
+@limiter.limit("10/minute", key_func=user_or_ip)
 async def assistant_stream(request: Request, body: AssistantRequest, auth_user_id: str = Depends(require_auth)):
     """RevAI campus assistant, streamed as Server-Sent Events.
 
