@@ -1,10 +1,22 @@
-"""RevAI campus assistant — dispatch layer (two lanes).
+"""RevAI campus assistant — dispatch layer.
 
-  - FAST LANE (simple / conversational): one quick LLM call, no tools. Snappy.
-  - AGENT LANE (needs real data): the Pydantic AI tool loop (revai/agent.py).
+Every question runs the Pydantic AI tool loop (revai/agent.py) and the model
+decides whether any tool is needed, so a greeting costs the same single request
+as a course lookup — the tool schemas add input tokens, not extra API calls.
+This matches /ai/assistant/stream, which has always driven the agent directly.
 
-Loud [RevAI] logging; on failure we fall back (agent -> plain call -> deterministic
-course summary) and surface errors as reply text instead of silent timeouts.
+There used to be a keyword-regex "fast lane" that answered `simple` questions
+without offering tools. It was removed: `\\b`-anchored keywords missed every
+plural ("electives", "grades", "sections") and every follow-up ("who teaches
+it?"), routing exactly the questions that needed data into the lane that
+couldn't fetch any — and it made the two endpoints answer the same message
+differently.
+
+The single fast LLM call and the deterministic course summary survive as
+*fallbacks*: on agent failure we degrade agent -> deterministic summary ->
+plain call, surfacing errors as reply text instead of silent timeouts. The
+deterministic path needs no LLM at all, so course questions still answer when
+the model is rate-limited. Loud [RevAI] logging throughout.
 """
 
 from __future__ import annotations
@@ -29,15 +41,8 @@ FAST_MAX_TOKENS = 220
 FAST_TIMEOUT_S = 20.0   # fast lane: keep it snappy
 LLM_TIMEOUT_S = 38.0    # plain-call fallback: a bit more room
 
-# Any of these signals means the question likely needs a tool -> AGENT LANE.
-_DATA_SIGNAL_RE = re.compile(
-    r"\b(prof|professor|gpa|grade|hardest|easiest|difficult|credit|prereq|"
-    r"hour|open|clos|when|where|today|tonight|now|menu|dining|dine|sbisa|commons|"
-    r"duncan|event|happening|deadline|register|class|course|elective|section|seat|"
-    r"food|club|organization|org|bus|route|parking|library|gym|\brec\b|"
-    r"schedule|exam|final)\b|[A-Za-z]{2,4}\s?\d{3}",
-    re.I,
-)
+# Used only by the deterministic fallback below to pull a course code out of the
+# message — never for routing.
 _COURSE_CODE_RE = re.compile(r"\b([A-Za-z]{2,4})\s?(\d{3}[A-Za-z]?)\b")
 
 
@@ -46,13 +51,9 @@ def _log(msg: str) -> None:
     logger.info(msg)
 
 
-def is_simple(message: str) -> bool:
-    """Fast lane for anything with no data-signal (greetings, chit-chat, general knowledge)."""
-    return not _DATA_SIGNAL_RE.search(message or "")
-
-
 def _fast_answer(message: str, history: Optional[List[Dict[str, str]]] = None) -> str:
-    """One quick LLM call, no tools. Uses GEMINI_FAST_MODEL if set (else the default)."""
+    """One quick LLM call, no tools — the last-resort fallback when the agent fails.
+    Uses GEMINI_FAST_MODEL if set (else the default)."""
     from .clients import gemini as gemini_client
 
     messages: List[Dict[str, str]] = [{"role": "system", "content": FAST_SYSTEM_PROMPT}]
@@ -119,28 +120,10 @@ def answer_question(
 
     clipped = history_mod.clip(history)
 
-    # -------- FAST LANE --------
-    # NOTE: a follow-up like "who teaches it?" carries no data-signal keyword of
-    # its own, so it lands here even with course history in context — it can use
-    # that history but can't call tools. Fixing that is lane-routing accuracy
-    # work (tracked separately), not a history concern.
-    if is_simple(message):
-        try:
-            text = _fast_answer(message, history=clipped)
-            _log(f"fast OK in {time.time() - started:.1f}s")
-            return {"text": text}
-        except Exception as exc:  # noqa: BLE001
-            import traceback
-
-            traceback.print_exc()
-            _log(f"fast ERROR in {time.time() - started:.1f}s: {exc!r}")
-            return {"text": f"[RevAI error] {exc}"}
-
-    # -------- AGENT LANE --------
     try:
         from . import agent as revai_agent
 
-        _log("agent lane")
+        _log("agent")
         out = revai_agent.answer(message, history=clipped, user_id=user_id)
         _log(f"agent OK in {time.time() - started:.1f}s courses={'courses' in out}")
         return out
