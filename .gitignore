@@ -52,4 +52,8 @@ android/
 scratch/
 test-compile.js
 
+# Regenerable grade-distribution cache (anex.us is the source of truth; these
+# are TTL'd and rebuilt on demand, or in bulk via scrape_grades.py --catalog).
+Backend/Data/grades/
+
 data_architecture_plan.md

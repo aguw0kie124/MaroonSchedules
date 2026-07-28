@@ -4,9 +4,9 @@ routers/grades.py
 -----------------
 FastAPI router that serves TAMU grade-distribution data.
 
-The primary data source is the JSON files written by scrape_grades.py
-(stored in Backend/Data/grades/).  If a file is not yet on disk the
-router falls back to fetching live from anex.us and caches the result.
+The source of truth is anex.us, fetched on demand. Backend/Data/grades/ is
+only a TTL'd cache in front of it (gitignored, regenerable) — see
+services/grades_service.py.
 
 Loading itself lives in services/grades_service.py — shared with revai/,
 which looks up professor GPAs from the same cache.

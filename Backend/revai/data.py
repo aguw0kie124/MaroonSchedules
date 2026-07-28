@@ -5,10 +5,9 @@ fallback (revai/dispatch.py). Kept framework-free so both can import it
 without circular dependencies.
 
 - Course facts come from the in-memory course catalog (datasources.get_all_courses).
-- Professor GPAs come from the grades file-first-then-live loader
-  (datasources.load_grade_rows): a course we've never seen is fetched from
-  anex.us on demand and written through to the Data/grades cache, so coverage
-  is the whole catalog (not just a seeded handful) and every later lookup is a
+- Professor GPAs come from anex.us via datasources.load_grade_rows, fetched on
+  demand (~90ms) and written through to a TTL'd Data/grades cache, so coverage
+  is the whole catalog (not just a seeded handful) and repeat lookups are a
   fast file read.
 """
 

@@ -1,11 +1,14 @@
 """
 services/grades_service.py
 ---------------------------
-Grade-distribution loading: file-first, live-fetch-and-cache fallback.
+Grade-distribution loading: live from anex.us, with a TTL'd file cache.
 
-The primary data source is the JSON files written by scrape_grades.py
-(stored in Backend/Data/grades/). If a file is not yet on disk this fetches
-live from anex.us and caches the result.
+anex.us is the source of truth — it answers in well under a second with clean
+JSON, so there's no reason to treat a file on disk as authoritative. The files
+in Backend/Data/grades/ are a latency-and-outage cache only: entries older than
+GRADES_CACHE_TTL_HOURS are refetched (so new semesters actually land), and a
+stale entry is still served if anex.us is unreachable. The directory is
+gitignored and regenerable — scrape_grades.py --catalog warms it in bulk.
 
 The live fetch uses `requests` (already a hard dependency, and what
 scrape_grades.py uses against this same endpoint). That matters beyond
@@ -24,14 +27,17 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List
+import time
+from typing import Any, Dict, List, Optional
 
 import requests
 from fastapi import HTTPException
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "Data", "grades")
 ANEX_BASE = "https://anex.us/grades/getData/"
-REQUEST_DELAY = 0.3  # seconds
+# How long a cached file stays authoritative. Grade reports only change when a
+# semester closes, so a day is plenty — the point is that entries expire at all.
+CACHE_TTL_SECONDS = float(os.getenv("GRADES_CACHE_TTL_HOURS", "24")) * 3600
 
 
 def _anex_fetch(subject: str, course_number: str) -> List[Dict[str, Any]]:
@@ -109,28 +115,54 @@ def _transform_row(
     }
 
 
+def _read_cache(filepath: str) -> Optional[List[Dict[str, Any]]]:
+    """Rows from a cache file, or None if it's missing or unreadable. A corrupt
+    file is deleted so the next call re-fetches instead of failing forever."""
+    if not os.path.exists(filepath):
+        return None
+    try:
+        with open(filepath, encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        try:
+            os.remove(filepath)
+        except OSError:
+            pass
+        return None
+
+
+def _is_fresh(filepath: str) -> bool:
+    try:
+        return (time.time() - os.path.getmtime(filepath)) < CACHE_TTL_SECONDS
+    except OSError:
+        return False
+
+
 def load_or_fetch(subject: str, course_number: str) -> List[Dict[str, Any]]:
-    """Return rows from cache file, or fetch + cache from anex.us."""
+    """Rows for a course: a fresh cache file if one exists, else live from anex.us."""
     filename = f"{subject.upper()}_{course_number}.json"
     filepath = os.path.join(DATA_DIR, filename)
 
-    if os.path.exists(filepath):
-        try:
-            with open(filepath, encoding="utf-8") as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            try:
-                os.remove(filepath)
-            except OSError:
-                pass
+    cached = _read_cache(filepath)
+    if cached is not None and _is_fresh(filepath):
+        return cached
 
-    # Not cached — fetch live
-    raw_rows = _anex_fetch(subject, course_number)
+    try:
+        raw_rows = _anex_fetch(subject, course_number)
+    except Exception:
+        # anex.us unreachable (or a bad status) — a stale cache beats no data.
+        if cached is not None:
+            return cached
+        raise
+
     rows = [_transform_row(r, subject, course_number) for r in raw_rows]
 
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(rows, f, indent=2)
+    # Only persist a real result. Caching an empty list would pin this course to
+    # "no grade data" for a full TTL on one bad response.
+    if rows:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(rows, f, indent=2)
 
     return rows
 
