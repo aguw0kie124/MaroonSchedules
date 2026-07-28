@@ -98,7 +98,7 @@ class RevAIDeps:
 # Flash is the agent default: fast per call (which matters in a multi-turn tool
 # loop) and reliable at function calling. Point GEMINI_AGENT_MODEL at a Pro model
 # if answer quality ever matters more than latency.
-DEFAULT_AGENT_MODEL = "gemini-3.5-flash"
+DEFAULT_AGENT_MODEL = "gemini-3.6-flash"
 
 
 def _agent_model_name() -> str:

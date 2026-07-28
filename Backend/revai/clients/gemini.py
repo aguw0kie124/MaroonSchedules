@@ -5,7 +5,7 @@ Uses the official `google-genai` SDK, which is already a dependency via
 
 Config (Backend/.env):
   GEMINI_API_KEY           required to enable this provider (GOOGLE_API_KEY also honored)
-  GEMINI_ASSISTANT_MODEL   default: gemini-3.5-flash
+  GEMINI_ASSISTANT_MODEL   default: gemini-3.6-flash
   GEMINI_ENABLE_THINKING   "true" to enable reasoning (slower); default off for speed
 """
 
@@ -17,7 +17,7 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger("backend.gemini")
 
-DEFAULT_MODEL = "gemini-3.5-flash"
+DEFAULT_MODEL = "gemini-3.6-flash"
 
 
 def api_key() -> str:

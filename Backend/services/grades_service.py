@@ -7,8 +7,13 @@ The primary data source is the JSON files written by scrape_grades.py
 (stored in Backend/Data/grades/). If a file is not yet on disk this fetches
 live from anex.us and caches the result.
 
-Uses only stdlib (urllib) for the live fetch so we don't add a hard
-dependency on the `requests` package at server startup.
+The live fetch uses `requests` (already a hard dependency, and what
+scrape_grades.py uses against this same endpoint). That matters beyond
+consistency: `requests` ships its own certifi CA bundle, whereas stdlib
+urllib relies on the interpreter's default trust store — which is empty on
+a macOS python.org install that never ran Install Certificates.command, so
+every live fetch there failed verification and silently degraded to "no
+grade data".
 
 Used by routers/grades.py (the /grades HTTP endpoints) and by revai/data.py
 (professor GPA lookups) — a shared, public home so RevAI doesn't reach into
@@ -19,10 +24,9 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.parse
-import urllib.request
 from typing import Any, Dict, List
 
+import requests
 from fastapi import HTTPException
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "Data", "grades")
@@ -31,21 +35,19 @@ REQUEST_DELAY = 0.3  # seconds
 
 
 def _anex_fetch(subject: str, course_number: str) -> List[Dict[str, Any]]:
-    """Live POST fetch from anex.us using stdlib urllib, returns raw rows."""
-    form_data = urllib.parse.urlencode({
-        "dept": subject.upper(),
-        "number": course_number,
-    }).encode("utf-8")
-
-    req = urllib.request.Request(ANEX_BASE, data=form_data, method="POST")
-    req.add_header("Content-Type", "application/x-www-form-urlencoded")
-
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        body = resp.read().decode("utf-8")
+    """Live POST fetch from anex.us, returns raw rows."""
+    resp = requests.post(
+        ANEX_BASE,
+        data={"dept": subject.upper(), "number": course_number},
+        timeout=15,
+    )
+    # urlopen raised on 4xx/5xx implicitly; requests doesn't, and without this an
+    # error page would fall through to the parse below as "class not found".
+    resp.raise_for_status()
 
     try:
-        payload = json.loads(body)
-    except json.JSONDecodeError:
+        payload = resp.json()
+    except ValueError:
         # anex.us may return non-JSON (e.g. HTML) when dept/course is invalid
         raise HTTPException(
             status_code=404,
