@@ -64,3 +64,16 @@ jobs:
 
       - name: Run backend and crawler checks
         run: python scripts/run_backend_ci_tests.py
+
+      # Nothing else in CI reads events.jsonl, so a hand-edit that corrupts it
+      # lands unnoticed (this happened once already -- 053d19b "rejoin TAMU
+      # event record split across two JSONL lines" mangled a valid record).
+      # The automated refresh validates at crawl time; this covers the manual
+      # path with the same code. --absolute-only skips the comparison guards,
+      # which are meaningless here: both sides would be committed data, and a
+      # PR branched before a weekly refresh would fail just for being behind.
+      - name: Validate committed event data
+        run: |
+          python scripts/validate_refresh.py --campus tamu \
+            --new TamuEventsCrawler/data/normalized/events.jsonl \
+            --absolute-only --report /tmp/committed-data.json
