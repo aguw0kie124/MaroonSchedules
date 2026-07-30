@@ -25,6 +25,10 @@ on:
         type: boolean
         default: false
         description: "Crawl + validate only; skip commit and deploy"
+      deploy_only:
+        type: boolean
+        default: false
+        description: "Skip the crawl; just copy the committed data to EC2 (retry a failed deploy)"
 
 concurrency:
   group: data-refresh
@@ -40,6 +44,11 @@ env:
 
 jobs:
   refresh:
+    # deploy_only reruns just the EC2 copy, for when the data committed fine
+    # but the transport failed (a stale EC2_HOST, SSH timeout). Without it a
+    # failed deploy has no retry path at all: the data is already on main, so
+    # a rerun finds no diff, sets committed=false, and skips the deploy again.
+    if: ${{ !inputs.deploy_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -119,7 +128,9 @@ jobs:
 
   deploy:
     needs: refresh
-    if: needs.refresh.outputs.committed == 'true'
+    # !cancelled() so this still evaluates when `refresh` was skipped by
+    # deploy_only -- a skipped need would otherwise skip this job too.
+    if: ${{ !cancelled() && (needs.refresh.outputs.committed == 'true' || inputs.deploy_only) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Shared with deploy-backend.yml: serialize all access to the EC2
@@ -180,7 +191,10 @@ jobs:
   # secret). Costs Gemini API tokens when enabled; the refresh/deploy above
   # never depend on it.
   review:
-    needs: [refresh, deploy]
+    # Depends on `refresh` only, NOT `deploy`: this reviews data quality, so a
+    # transport failure (SSH timeout, stale host) should not also cost us the
+    # quality check on data that committed perfectly well.
+    needs: refresh
     if: needs.refresh.outputs.committed == 'true' && vars.ENABLE_AGENTIC_REVIEW == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
