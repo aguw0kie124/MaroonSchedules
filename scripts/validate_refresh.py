@@ -104,6 +104,12 @@ def main():
     ap.add_argument("--min-upcoming-ratio", type=float, default=0.6)
     ap.add_argument("--report-only", action="store_true",
                     help="never exit non-zero; just write the report")
+    ap.add_argument("--absolute-only", action="store_true",
+                    help="Validate the file on its own merits and skip the "
+                         "comparison guards (upcoming-drop, source-death). For "
+                         "CI, where both sides are committed data so a diff is "
+                         "meaningless: a PR branched before a weekly refresh "
+                         "would otherwise fail purely for being behind main.")
     args = ap.parse_args()
 
     now = datetime.now(timezone.utc)
@@ -123,10 +129,15 @@ def main():
             for s in bad_samples:
                 failures.append(f"  sample bad line -> {s}")
 
-    old_text = git_show(args.old_ref, args.new)
-    old_events = load_jsonl(old_text)[0] if old_text else []
-    if not old_events:
-        warnings.append(f"no previous version at {args.old_ref}:{args.new}; skipping comparison checks")
+    if args.absolute_only:
+        # Deliberately do not load the previous version: with nothing to
+        # compare against, the guards below fall through on their own.
+        old_events = []
+    else:
+        old_text = git_show(args.old_ref, args.new)
+        old_events = load_jsonl(old_text)[0] if old_text else []
+        if not old_events:
+            warnings.append(f"no previous version at {args.old_ref}:{args.new}; skipping comparison checks")
 
     # --- schema ---
     all_fields = REQUIRED_FIELDS + CATEGORY_FLAGS
