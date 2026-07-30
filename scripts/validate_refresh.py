@@ -46,15 +46,32 @@ def parse_dt(value):
 
 
 def load_jsonl(text):
-    events, bad_lines = [], 0
-    for line in text.splitlines():
+    """Parse JSONL the same way the backend does.
+
+    Split on "\\n" only -- NOT str.splitlines(), which also breaks on U+2028
+    (LINE SEPARATOR), U+2029 (PARAGRAPH SEPARATOR) and U+0085 (NEL). Those are
+    legal unescaped inside a JSON string, and pydantic's model_dump_json (via
+    serde_json) emits them raw, so an event whose description contains one is
+    a single valid JSONL record that splitlines() tears in half -- producing
+    two fragments that both fail to parse and a bogus "N lines failed" verdict
+    on data that is completely fine.
+
+    The backend reads this file with `for line in handle` (see
+    Backend/services/campus_events_service.py), which splits on newlines only.
+    This guard must agree with the consumer, or it fails refreshes the app
+    would have served without complaint.
+    """
+    events, bad_lines, samples = [], 0, []
+    for line in text.split("\n"):
         if not line.strip():
             continue
         try:
             events.append(json.loads(line))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             bad_lines += 1
-    return events, bad_lines
+            if len(samples) < 3:
+                samples.append(f"{exc}: {line[:160]}")
+    return events, bad_lines, samples
 
 
 def git_show(ref, path):
@@ -96,11 +113,15 @@ def main():
     new_path = Path(args.new)
     if not new_path.exists() or not new_path.read_text(encoding="utf-8").strip():
         failures.append(f"new file {args.new} is missing or empty")
-        new_events, bad_lines = [], 0
+        new_events, bad_lines, bad_samples = [], 0, []
     else:
-        new_events, bad_lines = load_jsonl(new_path.read_text(encoding="utf-8"))
+        new_events, bad_lines, bad_samples = load_jsonl(
+            new_path.read_text(encoding="utf-8")
+        )
         if bad_lines:
             failures.append(f"{bad_lines} lines failed to parse as JSON")
+            for s in bad_samples:
+                failures.append(f"  sample bad line -> {s}")
 
     old_text = git_show(args.old_ref, args.new)
     old_events = load_jsonl(old_text)[0] if old_text else []
