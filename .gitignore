@@ -53,3 +53,7 @@ scratch/
 test-compile.js
 
 data_architecture_plan.md
+
+# Python virtualenvs (EC2 deploy target may create one in-tree)
+.venv/
+venv/
