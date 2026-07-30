@@ -2,8 +2,18 @@ name: Data Refresh
 
 # Reruns the TAMU event crawler, validates the output against the committed
 # data (schema, dates, no sharp drop in upcoming events), then commits the
-# refreshed events.jsonl and copies it onto the EC2 backend. On any failure
-# nothing is committed and one issue is opened.
+# refreshed events.jsonl to main. On any failure nothing is committed and one
+# issue is opened.
+#
+# THIS WORKFLOW DOES NOT TOUCH EC2. The box PULLS the committed data itself,
+# via deploy/pull_event_data.sh on a cron (see that script for install). We
+# tried pushing over SSH and GitHub's runners cannot reach the box: allowing
+# them would take ~7300 CIDR ranges against a 60-rule security group limit.
+# Pulling needs no inbound access and survives the instance's public IP
+# changing, which already broke the push approach once.
+#
+# The backend serves the new data without a restart: its event cache is keyed
+# on file mtime with a 300s TTL, and the pull script primes it immediately.
 #
 # UTD IS INTENTIONALLY NOT CRAWLED HERE. No client ever asks for it:
 # Frontend/api/client.ts sends no `campus` param and Backend/routers/
@@ -24,11 +34,7 @@ on:
       dry_run:
         type: boolean
         default: false
-        description: "Crawl + validate only; skip commit and deploy"
-      deploy_only:
-        type: boolean
-        default: false
-        description: "Skip the crawl; just copy the committed data to EC2 (retry a failed deploy)"
+        description: "Crawl + validate only; skip the commit"
 
 concurrency:
   group: data-refresh
@@ -44,11 +50,6 @@ env:
 
 jobs:
   refresh:
-    # deploy_only reruns just the EC2 copy, for when the data committed fine
-    # but the transport failed (a stale EC2_HOST, SSH timeout). Without it a
-    # failed deploy has no retry path at all: the data is already on main, so
-    # a rerun finds no diff, sets committed=false, and skips the deploy again.
-    if: ${{ !inputs.deploy_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -125,66 +126,6 @@ jobs:
             --title "[data-refresh] Refresh failed on $(date -u +%F)" \
             --label "data-refresh,automation" \
             --body "Crawl or validation failed; no data was committed. See run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} (refresh-report artifact has details)."
-
-  deploy:
-    needs: refresh
-    # !cancelled() so this still evaluates when `refresh` was skipped by
-    # deploy_only -- a skipped need would otherwise skip this job too.
-    if: ${{ !cancelled() && (needs.refresh.outputs.committed == 'true' || inputs.deploy_only) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    # Shared with deploy-backend.yml: serialize all access to the EC2
-    # checkout so two runs never race on `git reset --hard`.
-    concurrency:
-      group: ec2-deploy
-      cancel-in-progress: false
-    steps:
-      - name: Update event data on EC2 (data file only)
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            set -eu
-            cd "${{ vars.EC2_DEPLOY_PATH }}"
-            DATA=TamuEventsCrawler/data/normalized/events.jsonl
-
-            # Backend deploys are MANUAL (ENABLE_AUTO_DEPLOY is unset), so
-            # origin/main is routinely AHEAD of the code running here. A
-            # `git reset --hard origin/main` would drop undeployed backend
-            # code onto disk, where it would silently go live on the next
-            # crash or reboot restart -- bypassing the health gate in
-            # deploy-backend.yml. So move ONLY the event data file and leave
-            # HEAD on the last manually-deployed commit.
-            git fetch --quiet origin main
-            WANT="$(git rev-parse "FETCH_HEAD:$DATA")"
-
-            # Write to a temp file and rename rather than checking out in
-            # place. rename(2) is atomic, so an in-flight request can never
-            # read a half-written file (load_campus_events skips unparseable
-            # lines *silently*, so a torn read would poison the cache for
-            # 300s with no error), and it guarantees a fresh mtime -- the
-            # backend event cache is keyed on st_mtime_ns, and git checkout
-            # skips rewriting files whose stat data already matches.
-            git cat-file blob "$WANT" > "$DATA.tmp"
-            mv -f "$DATA.tmp" "$DATA"
-
-            GOT="$(git hash-object -- "$DATA")"
-            if [ "$GOT" != "$WANT" ]; then
-              echo "ERROR: $DATA hashes to $GOT, expected $WANT"
-              exit 1
-            fi
-            echo "Data updated: $WANT ($(wc -l < "$DATA") rows)"
-            echo "Backend code left at $(git rev-parse --short HEAD) (by design)."
-
-            # Prime the cache so the app serves fresh events in seconds
-            # rather than waiting out the 300s TTL. refresh=true bypasses the
-            # read cache and rewrites the shared Redis key for every other
-            # reader. Best-effort: the data is live within 300s regardless.
-            curl -sf -o /dev/null "http://localhost:8000/campus/events?refresh=true&limit=1" \
-              && echo "Event cache primed." \
-              || echo "WARN: prime failed; data still goes live within 300s."
 
   # Optional Gemini-powered quality audit. Skipped unless the repo variable
   # ENABLE_AGENTIC_REVIEW is set to "true" (and it needs the GEMINI_API_KEY
