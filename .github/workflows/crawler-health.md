@@ -86,6 +86,13 @@ exception partway through.
      clearly should have some (compare against the other sources — one dead
      source among many healthy ones is the classic "their site changed" signal).
 3. **If everything looks healthy, do nothing** — do not open an issue.
+
+   Note on UTD: its committed data is intentionally parked and stale (no
+   client requests it, so the weekly refresh no longer crawls it). This check
+   still runs the UTD crawler to keep its parsers under test, so judge it
+   **only on whether the crawl itself works** — a crash or a traceback is
+   worth reporting; the committed file being old is not. Do not open an issue
+   restating that UTD data is out of date.
 4. **If something is unhealthy, open exactly one issue** summarizing all the
    problems found in this run. In the issue:
    - Title: name the crawler(s) and the broken source(s), e.g.
