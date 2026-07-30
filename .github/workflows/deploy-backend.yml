@@ -10,9 +10,9 @@ name: Deploy Backend
 #
 # Gating: this runs only after the CI workflow succeeds, so a red build
 # never reaches EC2. NOTE: workflow_run (like schedule) only fires when the
-# workflow file lives on the repo's DEFAULT branch (main). Until these
-# files are merged to main, use the "Run workflow" button (workflow_dispatch)
-# to deploy from cicd.
+# workflow file lives on the repo's DEFAULT branch (main) — which is the
+# deploy branch here. Use the "Run workflow" button (workflow_dispatch) for
+# an ad-hoc deploy.
 
 on:
   workflow_run:
@@ -30,13 +30,13 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Deploy only on a successful CI run for the cicd branch, or a manual
+    # Deploy only on a successful CI run for the main branch, or a manual
     # dispatch. (head_branch is the branch CI ran on.)
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'cicd')
+       github.event.workflow_run.head_branch == 'main')
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -69,7 +69,7 @@ jobs:
           script: |
             set -e
             cd "${{ vars.EC2_DEPLOY_PATH }}"
-            BRANCH=cicd
+            BRANCH=main
 
             # Remember the currently-deployed commit so we can roll back to it.
             PREV="$(git rev-parse HEAD)"
