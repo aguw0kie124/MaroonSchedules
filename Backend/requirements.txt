@@ -12,7 +12,7 @@ PuLP
 pydantic-settings
 typing-extensions
 redis
-PyJWT==2.10.1
+PyJWT[crypto]==2.10.1
 slowapi
 bleach
 psycopg-pool
