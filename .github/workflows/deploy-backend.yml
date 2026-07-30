@@ -32,9 +32,17 @@ jobs:
     timeout-minutes: 10
     # Deploy only on a successful CI run for the main branch, or a manual
     # dispatch. (head_branch is the branch CI ran on.)
+    #
+    # The automatic path additionally requires the ENABLE_AUTO_DEPLOY repo
+    # variable to be "true". It is deliberately unset until the EC2 box has
+    # been bootstrapped by deploy/setup_ec2.sh — before that there is no
+    # maroonschedules unit to restart, so an automatic deploy would update
+    # the checkout and then fail. Manual dispatch always works, so the first
+    # deploy can be run and watched by hand.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
+      (vars.ENABLE_AUTO_DEPLOY == 'true' &&
+       github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_branch == 'main')
     steps:
