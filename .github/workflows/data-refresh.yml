@@ -1,9 +1,20 @@
 name: Data Refresh
 
-# Reruns the TAMU + UTD event crawlers, validates the output against the
-# committed data (schema, dates, no sharp drop in upcoming events), then
-# commits the refreshed events.jsonl files and pulls them onto the EC2
-# backend. On any failure nothing is committed and one issue is opened.
+# Reruns the TAMU event crawler, validates the output against the committed
+# data (schema, dates, no sharp drop in upcoming events), then commits the
+# refreshed events.jsonl and copies it onto the EC2 backend. On any failure
+# nothing is committed and one issue is opened.
+#
+# UTD IS INTENTIONALLY NOT CRAWLED HERE. No client ever asks for it:
+# Frontend/api/client.ts sends no `campus` param and Backend/routers/
+# campus_hub.py defaults to "tamu", so UTD data is unreachable from the app.
+# The crawler and the backend's `utd` source config are deliberately KEPT --
+# crawler-health.md still exercises the UTD parsers daily. To re-enable when
+# a campus selector ships, restore it in two places:
+#   1. this file -- the "Crawl UTD events" step, the second validate_refresh
+#      call, the `git add -f` path, and the deploy job's file list;
+#   2. data-refresh-review.md -- the review/utd.json report and the prompt
+#      bullets naming it, then run `gh aw compile`.
 
 on:
   schedule:
@@ -51,17 +62,11 @@ jobs:
         working-directory: TamuEventsCrawler
         run: python crawler.py crawl --all
 
-      - name: Crawl UTD events
-        run: python UtdEventsCrawler/crawler.py crawl
-
       - name: Validate refreshed data
         run: |
           python scripts/validate_refresh.py --campus tamu \
             --new TamuEventsCrawler/data/normalized/events.jsonl \
             --old-ref HEAD --report refresh-report/tamu.json
-          python scripts/validate_refresh.py --campus utd \
-            --new UtdEventsCrawler/data/normalized/events.jsonl \
-            --old-ref HEAD --report refresh-report/utd.json
 
       - name: Upload validation reports
         if: always()
@@ -77,15 +82,27 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f TamuEventsCrawler/data/normalized/events.jsonl \
-                     UtdEventsCrawler/data/normalized/events.jsonl
-          if git diff --cached --quiet; then
+
+          # `crawl --all` also rewrites the eight tracked CSV summaries under
+          # TamuEventsCrawler/output/ (crawler.py -> generate_all_summaries).
+          # They are NOT gitignored, so leaving them dirty makes the
+          # `git pull --rebase` below abort with "you have unstaged changes"
+          # and nothing ever gets pushed. Nothing in Backend/ or Frontend/
+          # reads them, so discard them.
+          git checkout -- TamuEventsCrawler/output || true
+
+          git add -f TamuEventsCrawler/data/normalized/events.jsonl
+          # Scoped to the data file so `committed=true` means exactly
+          # "events.jsonl changed" -- the precondition the deploy job needs.
+          if git diff --cached --quiet -- TamuEventsCrawler/data/normalized/events.jsonl; then
             echo "No event changes to commit."
             echo "committed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git commit -m "chore(data): refresh campus events [skip ci]"
-          git pull --rebase origin "$TARGET_BRANCH"
+          # autostash: belt-and-braces if the crawler ever starts writing
+          # some other tracked file we have not accounted for.
+          git -c rebase.autoStash=true pull --rebase origin "$TARGET_BRANCH"
           git push origin "HEAD:$TARGET_BRANCH"
           echo "committed=true" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -111,20 +128,52 @@ jobs:
       group: ec2-deploy
       cancel-in-progress: false
     steps:
-      - name: Pull refreshed data on EC2
+      - name: Update event data on EC2 (data file only)
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            set -e
+            set -eu
             cd "${{ vars.EC2_DEPLOY_PATH }}"
-            git fetch origin main
-            git checkout main
-            git reset --hard origin/main
-            # Backend picks up the new files automatically: its event cache is
-            # keyed on file mtime with a 300s TTL, so no restart is needed.
+            DATA=TamuEventsCrawler/data/normalized/events.jsonl
+
+            # Backend deploys are MANUAL (ENABLE_AUTO_DEPLOY is unset), so
+            # origin/main is routinely AHEAD of the code running here. A
+            # `git reset --hard origin/main` would drop undeployed backend
+            # code onto disk, where it would silently go live on the next
+            # crash or reboot restart -- bypassing the health gate in
+            # deploy-backend.yml. So move ONLY the event data file and leave
+            # HEAD on the last manually-deployed commit.
+            git fetch --quiet origin main
+            WANT="$(git rev-parse "FETCH_HEAD:$DATA")"
+
+            # Write to a temp file and rename rather than checking out in
+            # place. rename(2) is atomic, so an in-flight request can never
+            # read a half-written file (load_campus_events skips unparseable
+            # lines *silently*, so a torn read would poison the cache for
+            # 300s with no error), and it guarantees a fresh mtime -- the
+            # backend event cache is keyed on st_mtime_ns, and git checkout
+            # skips rewriting files whose stat data already matches.
+            git cat-file blob "$WANT" > "$DATA.tmp"
+            mv -f "$DATA.tmp" "$DATA"
+
+            GOT="$(git hash-object -- "$DATA")"
+            if [ "$GOT" != "$WANT" ]; then
+              echo "ERROR: $DATA hashes to $GOT, expected $WANT"
+              exit 1
+            fi
+            echo "Data updated: $WANT ($(wc -l < "$DATA") rows)"
+            echo "Backend code left at $(git rev-parse --short HEAD) (by design)."
+
+            # Prime the cache so the app serves fresh events in seconds
+            # rather than waiting out the 300s TTL. refresh=true bypasses the
+            # read cache and rewrites the shared Redis key for every other
+            # reader. Best-effort: the data is live within 300s regardless.
+            curl -sf -o /dev/null "http://localhost:8000/campus/events?refresh=true&limit=1" \
+              && echo "Event cache primed." \
+              || echo "WARN: prime failed; data still goes live within 300s."
 
   # Optional Gemini-powered quality audit. Skipped unless the repo variable
   # ENABLE_AGENTIC_REVIEW is set to "true" (and it needs the GEMINI_API_KEY

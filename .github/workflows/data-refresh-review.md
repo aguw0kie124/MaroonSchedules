@@ -57,9 +57,6 @@ steps:
       python scripts/validate_refresh.py --campus tamu \
         --new TamuEventsCrawler/data/normalized/events.jsonl \
         --old-ref "$SHA~1" --report review/tamu.json --report-only
-      python scripts/validate_refresh.py --campus utd \
-        --new UtdEventsCrawler/data/normalized/events.jsonl \
-        --old-ref "$SHA~1" --report review/utd.json --report-only
 ---
 
 # Event data refresh review
@@ -69,10 +66,11 @@ The automated data refresh just committed freshly crawled campus events
 reports comparing the new data against the previous version were built for
 you in the `review/` directory:
 
-- `review/tamu.json` and `review/utd.json` — counts (total / upcoming /
-  added / removed), per-source counts before and after, category-flag
-  coverage, and up to 20 sample newly-added events with their title,
-  start_time, source and category flags.
+- `review/tamu.json` — counts (total / upcoming / added / removed),
+  per-source counts before and after, category-flag coverage, and up to 20
+  sample newly-added events with their title, start_time, source and
+  category flags. (Only TAMU is refreshed weekly; UTD is parked because no
+  client requests it.)
 - `review/commit.txt` — the refresh commit summary.
 
 Deterministic checks (schema, dates, no sharp drop in upcoming events)
@@ -101,12 +99,12 @@ call those checks cannot make.
 3. **If everything looks fine, do nothing** — do not open an issue.
 4. **If something looks wrong, open exactly one issue** covering all
    problems found:
-   - Title: name the campus and the problem, e.g.
-     `UTD refresh: new events have garbled titles`.
+   - Title: name the problem, e.g.
+     `TAMU refresh: new events have garbled titles`.
    - Body: the concrete signal with a small excerpt from the report (never
      large dumps), and a "likely cause" pointer — parsers live in
-     `TamuEventsCrawler/parsers/` / `UtdEventsCrawler/parsers/`,
-     categorization in `TamuEventsCrawler/classifiers/`.
+     `TamuEventsCrawler/parsers/`, categorization in
+     `TamuEventsCrawler/classifiers/`.
    - Link the refresh run URL above.
    - Do not propose or make code or data changes — this is a report only.
 
