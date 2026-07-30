@@ -313,7 +313,9 @@ def stats() -> None:
     if not OUTPUT_FILE.exists():
         print("No UTD events snapshot yet.")
         return
-    lines = [line for line in OUTPUT_FILE.read_text(encoding="utf-8").splitlines() if line.strip()]
+    # split("\n"), not splitlines(): the latter also breaks on U+2028/U+2029/
+    # U+0085, which appear raw inside JSON strings and would inflate the count.
+    lines = [line for line in OUTPUT_FILE.read_text(encoding="utf-8").split("\n") if line.strip()]
     print(f"{OUTPUT_FILE}: {len(lines)} events")
 
 
