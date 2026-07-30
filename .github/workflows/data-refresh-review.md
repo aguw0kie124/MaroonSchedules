@@ -41,16 +41,25 @@ steps:
 
   - name: Build review reports
     run: |
+      set -x
       mkdir -p review
       SHA="${{ github.event.inputs.refresh_sha }}"
       SHA="${SHA:-HEAD}"
-      git log -1 --stat "$SHA" > review/commit.txt || true
+
+      # The agent checkout is shallow (depth 1), so `$SHA~1` does not exist
+      # and every comparison would silently degrade to "no previous version"
+      # — reporting the entire file as newly-added. Deepen so the parent
+      # commit is present before diffing.
+      git fetch --deepen=2 origin || git fetch --unshallow origin || true
+      git rev-parse --verify "$SHA~1" >/dev/null
+
+      git log -1 --stat "$SHA" > review/commit.txt
       python scripts/validate_refresh.py --campus tamu \
         --new TamuEventsCrawler/data/normalized/events.jsonl \
-        --old-ref "$SHA~1" --report review/tamu.json --report-only || true
+        --old-ref "$SHA~1" --report review/tamu.json --report-only
       python scripts/validate_refresh.py --campus utd \
         --new UtdEventsCrawler/data/normalized/events.jsonl \
-        --old-ref "$SHA~1" --report review/utd.json --report-only || true
+        --old-ref "$SHA~1" --report review/utd.json --report-only
 ---
 
 # Event data refresh review

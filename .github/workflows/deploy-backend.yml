@@ -71,6 +71,16 @@ jobs:
             cd "${{ vars.EC2_DEPLOY_PATH }}"
             BRANCH=main
 
+            # The venv lives outside the repo (the backend was hand-run from
+            # ~/fastapi-env before systemd), so `git reset --hard` never touches
+            # it. Set the EC2_VENV_PATH repo variable to match what
+            # deploy/setup_ec2.sh installed into.
+            VENV="${{ vars.EC2_VENV_PATH || '.venv' }}"
+            if [ ! -x "$VENV/bin/pip" ]; then
+              echo "ERROR: no venv at $VENV — run deploy/setup_ec2.sh on the box first."
+              exit 1
+            fi
+
             # Remember the currently-deployed commit so we can roll back to it.
             PREV="$(git rev-parse HEAD)"
             echo "Current (rollback) SHA: $PREV"
@@ -79,7 +89,7 @@ jobs:
               git fetch origin "$BRANCH"
               git checkout "$BRANCH"
               git reset --hard "$1"
-              .venv/bin/pip install -r Backend/requirements.txt --quiet
+              "$VENV/bin/pip" install -r Backend/requirements.txt --quiet
               sudo systemctl restart maroonschedules
             }
 

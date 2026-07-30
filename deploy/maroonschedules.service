@@ -11,7 +11,7 @@ After=network.target
 Type=simple
 User=__USER__
 WorkingDirectory=__DEPLOY_PATH__/Backend
-ExecStart=__DEPLOY_PATH__/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
+ExecStart=__VENV_PATH__/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --workers __WORKERS__
 Restart=always
 RestartSec=3
 
